@@ -1,0 +1,75 @@
+@using FormsApp.Data
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.Extensions.Localization
+@inject LocalizationService Loc
+@inject IStringLocalizer<SharedResource> L
+@using FormsApp.Shared
+@inject IFormService FormService
+
+@if (Template.Id == 0 || Template.Forms == null || !Template.Forms.Any())
+{
+    <div class="alert alert-info mt-3">@Loc["NoResultsYet"]</div>
+}
+else
+{
+    <SortableTable TItem="Form"
+                   Items="sortedForms"
+                   Columns="columns"
+                   SortField="sortColumn"
+                   SortDirection="@(sortAscending ? "asc" : "desc")"
+                   OnSort="SortResults"
+                   OnRowClick="HandleNavigateToForm">
+        <RowTemplate Context="form">
+            <td>@GetUserName(form)</td>
+            <td>@form.FilledAt.ToShortDateString()</td>
+            @if (canEdit)
+            {
+                <td>
+                    <button class="btn btn-danger btn-sm delete-button" @onclick="(e) => HandleDeleteForm(form.Id)" @onclick:stopPropagation title="@Loc["Delete"]">×</button>
+                </td>
+            }
+        </RowTemplate>
+    </SortableTable>
+}
+
+@code {
+    [Parameter] public Template Template { get; set; } = new();
+    [Parameter] public List<Form> sortedForms { get; set; } = new();
+    [Parameter] public string sortColumn { get; set; } = "FilledAt";
+    [Parameter] public bool sortAscending { get; set; } = false;
+    [Parameter] public EventCallback<string> SortResults { get; set; }
+    [Parameter] public EventCallback<int> NavigateToForm { get; set; }
+    [Parameter] public bool canEdit { get; set; } = false;
+    [Parameter] public EventCallback<int> OnDeleteForm { get; set; }
+
+    private List<SortableTable<Form>.SortableColumn> columns;
+
+    protected override void OnInitialized()
+    {
+        columns = new()
+        {
+            new() { Title = Loc["User"], Field = "UserName", Sortable = true },
+            new() { Title = Loc["Date"], Field = "FilledAt", Sortable = true }
+        };
+       
+    }
+
+    private async Task HandleNavigateToForm(Form form)
+    {
+        await NavigateToForm.InvokeAsync(form.Id);
+    }
+    private string GetUserName(Form form)
+    {
+        if (form.User?.UserName != null)
+        {
+            var userName = form.User.UserName;
+            var atIndex = userName.IndexOf('@');
+            return atIndex > 0 ? userName.Substring(0, atIndex) : userName;
+        }
+        return form.UserId;
+    }
+    private async Task HandleDeleteForm(int id)
+    {
+        await OnDeleteForm.InvokeAsync(id);
+    }
+} 

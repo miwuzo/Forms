@@ -1,0 +1,178 @@
+.comments-section {
+    margin-top: 2rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--color-border);
+}
+
+.comments-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+}
+
+.comments-count {
+    font-weight: 600;
+    color: var(--color-text);
+}
+
+.comment-form {
+    margin-bottom: 1.5rem;
+}
+
+.comment-textarea {
+    width: 100%;
+    min-height: 80px;
+    padding: 0.75rem;
+    border: 1px solid var(--color-input-border);
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    resize: vertical;
+    transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+    background-color: var(--color-input-bg);
+    color: var(--color-text);
+}
+
+.comment-textarea:focus {
+    border-color: #86b7fe;
+    outline: 0;
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
+.comment-submit-btn {
+    margin-top: 0.5rem;
+    padding: 0.5rem 1rem;
+    background-color: grey;
+    border: 1px solid grey;
+    color: white;
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    transition: background-color 0.15s ease-in-out, border-color 0.15s ease-in-out;
+}
+
+.comment-submit-btn:hover {
+    background-color: #5c636a;
+    border-color: #565e64;
+}
+
+.comment-submit-btn:disabled {
+    background-color: grey;
+    border-color: grey;
+    opacity: 0.65;
+}
+
+.comments-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.comment-item {
+    padding: 1rem;
+    margin-bottom: 1rem;
+    background-color: var(--color-comment-bg);
+    border: 1px solid var(--color-comment-border);
+    border-radius: 0.375rem;
+    transition: box-shadow 0.15s ease-in-out;
+}
+
+.comment-item:hover {
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+}
+
+.comment-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+.comment-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.comment-delete-btn {
+    background: none;
+    border: none;
+    color: #dc3545;
+    cursor: pointer;
+    padding: 0.25rem;
+    border-radius: 0.25rem;
+    opacity: 0;
+    transition: opacity 0.15s ease-in-out, background-color 0.15s ease-in-out;
+}
+
+.comment-delete-btn:hover {
+    background-color: rgba(220, 53, 69, 0.1);
+    color: #dc3545;
+}
+
+.comment-item:hover .comment-delete-btn {
+    opacity: 1;
+}
+
+.comment-author {
+    font-weight: 600;
+    color: var(--color-text);
+    font-size: 0.875rem;
+}
+
+.comment-date {
+    color: var(--color-text);
+    opacity: 0.7;
+    font-size: 0.75rem;
+}
+
+.comment-text {
+    color: var(--color-text);
+    line-height: 1.5;
+    margin: 0;
+    word-wrap: break-word;
+}
+
+.likes-section {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    padding: 1rem;
+    
+}
+
+.likes-count {
+    font-weight: 600;
+    color: var(--color-text);
+}
+
+.like-btn {
+    padding: 0.375rem 0.75rem;
+    background-color: blue;
+    border: 1px solid blue;
+    color: white;
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    transition: background-color 0.15s ease-in-out, border-color 0.15s ease-in-out;
+}
+
+.like-btn:hover:not(:disabled) {
+    background-color: #0b5ed7;
+    border-color: #0a58ca;
+}
+
+.like-btn:disabled {
+    background-color: grey;
+    border-color: grey;
+    opacity: 0.65;
+}
+
+.like-btn.liked {
+    background-color: green;
+    border-color: green;
+}
+
+.like-btn.liked:hover {
+    background-color: darkgreen;
+    border-color: darkgreen;
+} 

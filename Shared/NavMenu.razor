@@ -1,0 +1,103 @@
+﻿@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components
+@inject LocalizationService Loc
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager NavigationManager
+
+@code {
+    private bool isAuthenticated = false;
+    private bool isAdmin = false;
+    private bool isAdminDropdownOpen = false;
+    private bool isMyDataDropdownOpen = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        isAuthenticated = user.Identity?.IsAuthenticated ?? false;
+        isAdmin = isAuthenticated && user.Claims.Any(c => c.Type == "role" && c.Value == "Admin");
+    }
+
+    private void ToggleAdminDropdown()
+    {
+        isAdminDropdownOpen = !isAdminDropdownOpen;
+        if (isAdminDropdownOpen) isMyDataDropdownOpen = false;
+        StateHasChanged();
+    }
+
+    private void ToggleMyDataDropdown()
+    {
+        isMyDataDropdownOpen = !isMyDataDropdownOpen;
+        if (isMyDataDropdownOpen) isAdminDropdownOpen = false;
+        StateHasChanged();
+    }
+
+    private void CloseAdminDropdown()
+    {
+        isAdminDropdownOpen = false;
+        StateHasChanged();
+    }
+
+    private void CloseMyDataDropdown()
+    {
+        isMyDataDropdownOpen = false;
+        StateHasChanged();
+    }
+
+    private void NavigateToAdminTab(string tab)
+    {
+        CloseAdminDropdown();
+        NavigationManager.NavigateTo($"/admin?tab={tab}", forceLoad: true);
+    }
+
+    private void NavigateToMyDataTab(string tab)
+    {
+        CloseMyDataDropdown();
+        NavigationManager.NavigateTo($"/user?tab={tab}", forceLoad: true);
+    }
+}
+
+<nav class="simple-nav">
+    <div class="nav-item">
+        <a class="nav-link @(NavigationManager.Uri.EndsWith("/") ? "active" : "")" href="/">
+            @Loc["MainPageTitle"]
+        </a>
+    </div>
+    
+    @if (isAuthenticated)
+    {
+        <div class="nav-item dropdown">
+            <button type="button" class="nav-link dropdown-toggle @(NavigationManager.Uri.Contains("/user") ? "active" : "")" 
+                    @onclick="ToggleMyDataDropdown">
+                @Loc["MyData"]
+            </button>
+            
+            @if (isMyDataDropdownOpen)
+            {
+                <div class="dropdown-menu">
+                    <button class="dropdown-item" @onclick="@(() => NavigateToMyDataTab("templates"))">@Loc["MyTemplates"]</button>
+                    <button class="dropdown-item" @onclick="@(() => NavigateToMyDataTab("forms"))">@Loc["MyForms"]</button>
+                </div>
+            }
+        </div>
+        
+        @if (isAdmin)
+        {
+            <div class="nav-item dropdown">
+                <button type="button" class="nav-link dropdown-toggle @(NavigationManager.Uri.Contains("/admin") ? "active" : "")" 
+                        @onclick="ToggleAdminDropdown">
+                    @Loc["Admin"]
+                </button>
+                
+                @if (isAdminDropdownOpen)
+                {
+                    <div class="dropdown-menu">
+                        <button class="dropdown-item" @onclick="@(() => NavigateToAdminTab("users"))">@Loc["Users"]</button>
+                        <button class="dropdown-item" @onclick="@(() => NavigateToAdminTab("templates"))">@Loc["AllTemplates"]</button>
+                        <button class="dropdown-item" @onclick="@(() => NavigateToAdminTab("forms"))">@Loc["AllForms"]</button>
+                    </div>
+                }
+            </div>
+        }
+    }
+</nav>

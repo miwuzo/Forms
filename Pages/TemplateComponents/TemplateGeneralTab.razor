@@ -1,0 +1,52 @@
+@using FormsApp.Data
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.Extensions.Localization
+@inject LocalizationService Loc
+@inject IStringLocalizer<SharedResource> L
+
+<div>
+    <div class="mb-3">
+        <label>@Loc["Title"]</label>
+        <input class="form-control" @bind="Template.Title" disabled="@(!canEdit)" />
+    </div>
+    <div class="mb-3">
+        <label>@Loc["Description"]</label>
+        <textarea class="form-control" @bind="Template.Description" disabled="@(!canEdit)"></textarea>
+    </div>
+    <div class="mb-3">
+        <label>@Loc["Topic"]</label>
+        <input class="form-control" @bind="Template.Topic" disabled="@(!canEdit)" />
+    </div>
+    <div class="mb-3">
+        <label>@Loc["Tags"]</label>
+        <input class="form-control" @bind="Template.Tags" disabled="@(!canEdit)" />
+    </div>
+    @if (canEdit && Template.Id > 0)
+    {
+        <button class="btn btn-success" @onclick="SaveTemplate">@Loc["Save"]</button>
+    }
+    @if (canEdit && Template.Id == 0)
+    {
+        <button class="btn btn-success" @onclick="CreateTemplate">@Loc["CreateTemplate"]</button>
+    }
+    @if (!canEdit && hasAccessToFill)
+    {
+        <a class="btn btn-primary" href="@($"/fill/{Template.Id}")">@Loc["FillTemplate"]</a>
+    }
+    @if (!canEdit && !hasAccessToFill)
+    {
+        <div class="alert alert-warning">
+            <p>@Loc["NoAccessToFill"]</p>
+        </div>
+    }
+    
+</div>
+
+@code {
+    [Parameter] public Template Template { get; set; } = new();
+    [Parameter] public bool canEdit { get; set; }
+    [Parameter] public bool hasAccessToFill { get; set; }
+    [Parameter] public string validationError { get; set; } = string.Empty;
+    [Parameter] public EventCallback SaveTemplate { get; set; }
+    [Parameter] public EventCallback CreateTemplate { get; set; }
+} 

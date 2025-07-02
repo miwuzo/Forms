@@ -1,0 +1,61 @@
+@typeparam TItem
+@using Microsoft.AspNetCore.Components
+
+<div class="table-container">
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                @foreach (var col in Columns)
+                {
+                    if (col.Sortable)
+                    {
+                        <th class="sortable-header @(GetSortClass(col.Field))" @onclick="() => OnSort.InvokeAsync(col.Field)" @onclick:preventDefault="false">
+                            @col.Title
+                        </th>
+                    }
+                    else
+                    {
+                        <th>@col.Title</th>
+                    }
+                }
+            </tr>
+        </thead>
+        <tbody>
+            @if (Items != null)
+            {
+                @foreach (var item in Items)
+                {
+                    <tr class="clickable-row" @onclick="() => OnRowClick.InvokeAsync(item)" @onclick:preventDefault="false">
+                        @RowTemplate(item)
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    [Parameter] public IEnumerable<TItem> Items { get; set; } = new List<TItem>();
+    [Parameter] public List<SortableColumn> Columns { get; set; } = new();
+    [Parameter] public string SortField { get; set; } = string.Empty;
+    [Parameter] public string SortDirection { get; set; } = "asc";
+    [Parameter] public EventCallback<string> OnSort { get; set; }
+    [Parameter] public EventCallback<TItem> OnRowClick { get; set; }
+    [Parameter] public RenderFragment<TItem> RowTemplate { get; set; } = default!;
+
+    private string GetSortClass(string field)
+    {
+        if (SortField == field)
+        {
+            return SortDirection == "asc" ? "sort-asc" : "sort-desc";
+        }
+        return string.Empty;
+    }
+
+    public class SortableColumn
+    {
+        public string Title { get; set; } = string.Empty;
+        public string Field { get; set; } = string.Empty;
+        public bool Sortable { get; set; } = true;
+    }
+} 

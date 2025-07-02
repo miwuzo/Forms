@@ -1,0 +1,20 @@
+@namespace FormsApp.Shared
+@using FormsApp.Data
+@using Microsoft.EntityFrameworkCore
+@inject ITagService TagService
+
+<div>
+    @foreach (var tag in Tags)
+    {
+        <a href="/?tag=@Uri.EscapeDataString(tag.Name)" class="badge bg-primary m-1" style="font-size:16px; text-decoration:none; cursor:pointer;">@tag.Name</a>
+    }
+</div>
+
+@code {
+    private List<Tag> Tags = new();
+
+    protected override void OnInitialized()
+    {
+        Tags = TagService.GetAllTags().OrderByDescending(t => t.Id).Take(10).ToList();
+    }
+} 

@@ -1,0 +1,162 @@
+@using FormsApp.Data
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.Extensions.Localization
+@inject LocalizationService Loc
+@inject IStringLocalizer<SharedResource> L
+
+@if (canEdit)
+{
+    <div class="mb-3 p-3">
+        <div class="row align-items-end">
+            <div class="col-md-4">
+                <select class="form-select form-select-sm" style="width: 40px; padding: 0.25rem 0.5rem;" @bind="newFieldType">
+                    <option value="@((int)FieldType.String)">@Loc["String"] - @Loc["SingleLineText"]</option>
+                    <option value="@((int)FieldType.MultilineText)">@Loc["MultilineText"] - @Loc["MultilineText"]</option>
+                    <option value="@((int)FieldType.Integer)">@Loc["Integer"] - @Loc["Number"]</option>
+                    <option value="@((int)FieldType.Checkbox)">@Loc["Checkbox"] - @Loc["YesNo"]</option>
+                </select>
+                <div class="selected-type-info">
+                    @GetFieldTypeDescription(newFieldType)
+                </div>
+            </div>
+            <div class="col-md-2">
+                <button class="btn btn-success w-100" @onclick="() => AddField.InvokeAsync()" disabled="@(!CanAddField(newFieldType))" title="@Loc["AddQuestion"]">
+                    <i class="oi oi-plus"></i>
+                </button>
+            </div>
+        </div>
+        @if (!CanAddField(newFieldType))
+        {
+            <small class="text-muted">@Loc["MaxQuestionsReached"]</small>
+        }
+    </div>
+}
+
+<div class="questions-container">
+    @if (!Template.Fields.Any())
+    {
+        <div class="alert alert-info">
+            <i class="oi oi-info"></i> @Loc["NoQuestionsYet"]
+        </div>
+    }
+    else
+    {
+        <h6>@Loc["QuestionsList"] (@Template.Fields.Count)</h6>
+        <small class="text-muted mb-3 d-block">
+        </small>
+        <div class="questions-list">
+            @foreach (var field in Template.Fields.OrderBy(f => f.Order))
+            {
+                <div class="question-card card mb-3 @(dragFieldId == field.Id ? "dragging" : "")" 
+                     draggable="true" 
+                     @ondragstart="@((e) => OnDragStart.InvokeAsync(field.Id))" 
+                     @ondrop="@((e) => OnDrop.InvokeAsync(field.Id))" 
+                     @ondragover="@((e) => OnDragOver.InvokeAsync())" @ondragover:preventDefault>
+                    
+                    <div class="card-body">
+                        <div class="question-header d-flex justify-content-between align-items-start mb-3">
+                            <div class="question-type-badge">
+                                <span class="badge @GetFieldTypeBadgeClass(field.Type)">
+                                    @GetFieldTypeDisplayName(field.Type)
+                                </span>
+                            </div>
+                            @if (canEdit)
+                            {
+                                <div class="question-actions">
+                                    <button class="btn btn-sm btn-outline-danger" 
+                                            @onclick="() => RemoveField.InvokeAsync(field.Id)"
+                                            title="@Loc["DeleteQuestion"]">
+                                        <i class="oi oi-trash"></i>
+                                    </button>
+                                </div>
+                            }
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <input class="form-control" @bind="field.Label" disabled="@(!canEdit)" placeholder="@Loc["EnterQuestionTitle"]" />
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <input class="form-control" @bind="field.Description" disabled="@(!canEdit)" placeholder="@Loc["EnterQuestionDescription"]" />
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="showInResults_@field.Id" @bind="field.ShowInResults" disabled="@(!canEdit)" />
+                            <label class="form-check-label" for="showInResults_@field.Id">
+                                <i class="oi oi-table"></i> @Loc["ShowInResultsTable"]
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@if (!canEdit && hasAccessToFill)
+{
+    <div class="mt-4">
+        <a class="btn btn-primary" href="@($"/fill/{Template.Id}")">
+            <i class="oi oi-plus"></i> @Loc["FillTemplate"]
+        </a>
+    </div>
+}
+
+@code {
+    [Parameter] public Template Template { get; set; } = new();
+    [Parameter] public bool canEdit { get; set; }
+    [Parameter] public bool hasAccessToFill { get; set; }
+    [Parameter] public FieldType newFieldType { get; set; } = FieldType.String;
+    [Parameter] public int? dragFieldId { get; set; }
+    [Parameter] public EventCallback AddField { get; set; }
+    [Parameter] public EventCallback<int> RemoveField { get; set; }
+    [Parameter] public EventCallback<int> OnDragStart { get; set; }
+    [Parameter] public EventCallback<int> OnDrop { get; set; }
+    [Parameter] public EventCallback OnDragOver { get; set; }
+
+    private bool CanAddField(FieldType type)
+    {
+        return Template.Fields.Count(f => f.Type == type) < 4;
+    }
+
+    private string GetFieldTypeDisplayName(FieldType type)
+    {
+        return type switch
+        {
+            FieldType.String => Loc["String"],
+            FieldType.MultilineText => Loc["MultilineText"],
+            FieldType.Integer => Loc["Integer"],
+            FieldType.Checkbox => Loc["Checkbox"],
+            _ => type.ToString()
+        };
+    }
+
+    private string GetFieldTypeBadgeClass(FieldType type)
+    {
+        return type switch
+        {
+            FieldType.String => "bg-primary",
+            FieldType.MultilineText => "bg-info",
+            FieldType.Integer => "bg-success",
+            FieldType.Checkbox => "bg-warning",
+            _ => "bg-secondary"
+        };
+    }
+
+    private string GetFieldTypeDescription(FieldType type)
+    {
+        return type switch
+        {
+            FieldType.String => Loc["StringDescription"],
+            FieldType.MultilineText => Loc["MultilineTextDescription"],
+            FieldType.Integer => Loc["IntegerDescription"],
+            FieldType.Checkbox => Loc["CheckboxDescription"],
+            _ => Loc["UnknownTypeDescription"]
+        };
+    }
+} 

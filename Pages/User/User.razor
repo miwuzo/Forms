@@ -1,0 +1,305 @@
+@page "/user"
+@using FormsApp.Data
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.WebUtilities
+@using FormsApp.Pages.UserComponents
+@inject NavigationManager Navigation
+@inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
+@inject IJSRuntime JSRuntime
+@inject LocalizationService Loc
+@inject ITemplateService TemplateService
+@inject IFormService FormService
+@inject IUserService UserService
+@implements IDisposable
+
+@code {
+    private List<Template> MyTemplates = new();
+    private List<Form> MyForms = new();
+    private string? userId;
+    private bool isUser = false;
+    private string activeTab = "templates";
+    private Dictionary<string, string> userNames = new();
+    
+    private string templatesSortField = "created";
+    private string templatesSortDirection = "desc";
+    private List<Template> MyTemplatesSorted = new();
+    
+    private string formsSortField = "created";
+    private string formsSortDirection = "desc";
+    private List<Form> MyFormsSorted = new();
+    
+    private const string titleField = "title";
+    private const string descriptionField = "description";
+    private const string authorField = "author";
+    private const string createdField = "created";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        if (!authState.User.Identity?.IsAuthenticated ?? true)
+        {
+            Navigation.NavigateTo("/Identity/Account/Login", true);
+            return;
+        }
+        isUser = true;
+        userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (userId != null)
+        {
+            MyTemplates = TemplateService.GetUserTemplates(userId);
+            MyForms = FormService.GetUserForms(userId);
+            
+            var allUserIds = MyTemplates.Select(t => t.AuthorId)
+                .Union(MyForms.Where(f => f.Template != null).Select(f => f.Template.AuthorId))
+                .Where(id => !string.IsNullOrEmpty(id))
+                .Distinct()
+                .ToList();
+            
+            var users = UserService.GetAllUsers().Where(u => allUserIds.Contains(u.Id)).ToList();
+            userNames = users.ToDictionary(u => u.Id, u => GetDisplayName(u.UserName));
+            
+            ApplyTemplatesSorting();
+            ApplyFormsSorting();
+        }
+        
+        var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
+        if (QueryHelpers.ParseQuery(uri.Query).TryGetValue("tab", out var tabValues))
+        {
+            var tab = tabValues.FirstOrDefault();
+            if (!string.IsNullOrEmpty(tab) && (tab == "templates" || tab == "forms"))
+            {
+                activeTab = tab;
+            }
+        }
+        
+        Navigation.LocationChanged += OnLocationChanged;
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        var uri = Navigation.ToAbsoluteUri(e.Location);
+        if (QueryHelpers.ParseQuery(uri.Query).TryGetValue("tab", out var tabValues))
+        {
+            var tab = tabValues.FirstOrDefault();
+            if (!string.IsNullOrEmpty(tab) && (tab == "templates" || tab == "forms"))
+            {
+                activeTab = tab;
+                StateHasChanged();
+            }
+        }
+    }
+
+    public void Dispose()
+    {
+        Navigation.LocationChanged -= OnLocationChanged;
+    }
+
+    private string GetDisplayName(string? userName)
+    {
+        if (string.IsNullOrEmpty(userName))
+            return string.Empty;
+        
+        if (userName == UserService.GetUserById(userId ?? "")?.UserName)
+            return "Вы";
+        
+        var atIndex = userName.IndexOf('@');
+        return atIndex > 0 ? userName.Substring(0, atIndex) : userName;
+    }
+
+    private void SetTab(string tab) 
+    {
+        activeTab = tab;
+        Navigation.NavigateTo($"/user?tab={tab}", forceLoad: true);
+    }
+
+    private void SortTemplates(string field)
+    {
+        if (templatesSortField == field)
+        {
+            templatesSortDirection = templatesSortDirection == "asc" ? "desc" : "asc";
+        }
+        else
+        {
+            templatesSortField = field;
+            templatesSortDirection = "asc";
+        }
+        ApplyTemplatesSorting();
+        StateHasChanged();
+    }
+
+    private void SortForms(string field)
+    {
+        if (formsSortField == field)
+        {
+            formsSortDirection = formsSortDirection == "asc" ? "desc" : "asc";
+        }
+        else
+        {
+            formsSortField = field;
+            formsSortDirection = "asc";
+        }
+        ApplyFormsSorting();
+        StateHasChanged();
+    }
+
+    private void ApplyTemplatesSorting()
+    {
+        switch (templatesSortField)
+        {
+            case "title":
+                MyTemplatesSorted = templatesSortDirection == "asc"
+                    ? MyTemplates.OrderBy(t => t.Title).ToList()
+                    : MyTemplates.OrderByDescending(t => t.Title).ToList();
+                break;
+            case "description":
+                MyTemplatesSorted = templatesSortDirection == "asc"
+                    ? MyTemplates.OrderBy(t => t.Description).ToList()
+                    : MyTemplates.OrderByDescending(t => t.Description).ToList();
+                break;
+            case "author":
+                MyTemplatesSorted = templatesSortDirection == "asc"
+                    ? MyTemplates.OrderBy(t => t.AuthorId).ToList()
+                    : MyTemplates.OrderByDescending(t => t.AuthorId).ToList();
+                break;
+            default: 
+                MyTemplatesSorted = templatesSortDirection == "asc"
+                    ? MyTemplates.OrderBy(t => t.CreatedAt).ToList()
+                    : MyTemplates.OrderByDescending(t => t.CreatedAt).ToList();
+                break;
+        }
+    }
+
+    private void ApplyFormsSorting()
+    {
+        switch (formsSortField)
+        {
+            case "title":
+                MyFormsSorted = formsSortDirection == "asc"
+                    ? MyForms.OrderBy(f => f.Template?.Title ?? "").ToList()
+                    : MyForms.OrderByDescending(f => f.Template?.Title ?? "").ToList();
+                break;
+            case "description":
+                MyFormsSorted = formsSortDirection == "asc"
+                    ? MyForms.OrderBy(f => f.Template?.Description ?? "").ToList()
+                    : MyForms.OrderByDescending(f => f.Template?.Description ?? "").ToList();
+                break;
+            case "author":
+                MyFormsSorted = formsSortDirection == "asc"
+                    ? MyForms.OrderBy(f => f.Template?.AuthorId ?? "").ToList()
+                    : MyForms.OrderByDescending(f => f.Template?.AuthorId ?? "").ToList();
+                break;
+            default: 
+                MyFormsSorted = formsSortDirection == "asc"
+                    ? MyForms.OrderBy(f => f.FilledAt).ToList()
+                    : MyForms.OrderByDescending(f => f.FilledAt).ToList();
+                break;
+        }
+    }
+
+    private string GetTemplatesSortClass(string field)
+    {
+        if (templatesSortField == field)
+        {
+            return templatesSortDirection == "asc" ? "sort-asc" : "sort-desc";
+        }
+        return "";
+    }
+
+    private string GetFormsSortClass(string field)
+    {
+        if (formsSortField == field)
+        {
+            return formsSortDirection == "asc" ? "sort-asc" : "sort-desc";
+        }
+        return "";
+    }
+
+    private void NavigateToTemplate(int templateId)
+    {
+        Navigation.NavigateTo($"/template/{templateId}");
+    }
+
+    private void NavigateToForm(int formId)
+    {
+        Navigation.NavigateTo($"/filled/{formId}");
+    }
+
+    private void AddTemplate()
+    {
+        var newTemplate = new Template
+        {
+            Title = "Новый шаблон",
+            Description = "Описание...",
+            AuthorId = userId ?? string.Empty,
+            CreatedAt = DateTime.UtcNow,
+            Fields = new List<FormField>(),
+            Forms = new List<Form>()
+        };
+        TemplateService.SaveTemplate(newTemplate);
+        MyTemplates.Add(newTemplate);
+        ApplyTemplatesSorting();
+        activeTab = "templates";
+    }
+
+    private void DeleteTemplate(int id)
+    {
+        TemplateService.DeleteTemplate(id);
+        MyTemplates.RemoveAll(t => t.Id == id);
+        ApplyTemplatesSorting();
+    }
+
+    private void DeleteForm(int id)
+    {
+        FormService.DeleteForm(id);
+        MyForms.RemoveAll(f => f.Id == id);
+        ApplyFormsSorting();
+    }
+
+    private string TruncateDescription(string description)
+    {
+        if (string.IsNullOrEmpty(description))
+            return string.Empty;
+        
+        if (description.Length <= 100)
+            return description;
+        
+        return description.Substring(0, 100) + "...";
+    }
+}
+
+<PageTitle>@Loc["MyData"]</PageTitle>
+
+<div class="container mt-4">
+    <ul class="nav nav-tabs">
+        <li class="nav-item">
+            <a class="nav-link @(activeTab == "templates" ? "active" : "")" href="#" @onclick='() => SetTab("templates")' @onclick:preventDefault>@Loc["MyTemplates"]</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link @(activeTab == "forms" ? "active" : "")" href="#" @onclick='() => SetTab("forms")' @onclick:preventDefault>@Loc["MyForms"]</a>
+        </li>
+    </ul>
+    <div class="tab-content mt-3">
+        @if (activeTab == "templates")
+        {
+            <FormsApp.Pages.UserComponents.UserTemplates 
+                TemplatesSorted="MyTemplatesSorted"
+                UserNames="userNames"
+                SortField="templatesSortField"
+                SortDirection="templatesSortDirection"
+                OnAddTemplate="AddTemplate"
+                OnSort="SortTemplates"
+                OnNavigateToTemplate="NavigateToTemplate"
+                OnDeleteTemplate="DeleteTemplate" />
+        }
+        @if (activeTab == "forms")
+        {
+            <FormsApp.Pages.UserComponents.UserForms 
+                FormsSorted="MyFormsSorted"
+                UserNames="userNames"
+                SortField="formsSortField"
+                SortDirection="formsSortDirection"
+                OnSort="SortForms"
+                OnNavigateToForm="NavigateToForm"
+                OnDeleteForm="DeleteForm" />
+        }
+    </div>
+</div> 

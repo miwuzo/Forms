@@ -1,0 +1,81 @@
+@using FormsApp.Data
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.Extensions.Localization
+@inject LocalizationService Loc
+@inject IStringLocalizer<SharedResource> L
+@inject IFormService FormService
+
+@if (Template.Id == 0 || Template.Forms == null || !Template.Forms.Any())
+{
+    <div class="alert alert-info mt-3">
+        <h5>@Loc["Analytics"]</h5>
+        <p>@Loc["NoAnalyticsYet"]</p>
+    </div>
+}
+else
+{
+    <div class="mt-3">
+        @foreach (var field in Template.Fields)
+        {
+            var fieldAnswers = Template.Forms.SelectMany(f => f.Answers).Where(a => a.FieldId == field.Id).ToList();
+            var completionRate = Template.Forms.Count > 0 ? (double)fieldAnswers.Count / Template.Forms.Count * 100 : 0;
+            
+            <div class="mb-4">
+                <h5>@field.Label</h5>
+                <div class="border p-3">
+                    
+                    @if (field.Type == FieldType.Integer && fieldAnswers.Any())
+                    {
+                        var numericValues = fieldAnswers
+                            .Select(a => int.TryParse(a.Value, out var v) ? v : (int?)null)
+                            .Where(v => v.HasValue)
+                            .Select(v => v.Value)
+                            .ToList();
+                        
+                        if (numericValues.Any())
+                        {
+                            <p><strong>@Loc["Average"]:</strong> @numericValues.Average().ToString("F2") | <strong>@Loc["MinMax"]:</strong> @numericValues.Min() / @numericValues.Max()</p>
+                        }
+                    }
+                    
+                    @if ((field.Type == FieldType.String || field.Type == FieldType.MultilineText || field.Type == FieldType.Checkbox) && fieldAnswers.Any())
+                    {
+                        var popularAnswers = fieldAnswers
+                            .Where(a => !string.IsNullOrWhiteSpace(a.Value))
+                            .GroupBy(a => field.Type == FieldType.Checkbox ? a.Value.ToLower() : a.Value.Trim())
+                            .Select(g => (g.Key, g.Count()))
+                            .OrderByDescending(x => x.Item2)
+                            .Take(5)
+                            .ToList();
+                        
+                        if (popularAnswers.Any())
+                        {
+                            <ul class="list-unstyled">
+                                @foreach (var answer in popularAnswers)
+                                {
+                                    <li>@answer.Key (@answer.Item2)</li>
+                                }
+                            </ul>
+                        }
+                    }
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public Template Template { get; set; } = new();
+
+    protected override void OnParametersSet()
+    {
+        if (Template != null && Template.Id > 0)
+        {
+            var forms = FormService.GetFormsByTemplateId(Template.Id);
+            if (forms != null)
+            {
+                Template.Forms = forms.ToList();
+            }
+        }
+    }
+} 

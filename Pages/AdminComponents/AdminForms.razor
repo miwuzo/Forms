@@ -1,0 +1,123 @@
+@using FormsApp.Data
+@inject LocalizationService Loc
+@inject IFormService FormService
+@inject NavigationManager Navigation
+
+
+<div class="toolbar mb-2">
+    <button class="btn btn-danger" @onclick="DeleteSelectedForms" disabled="@(!selectedForms.Any())">@Loc["DeleteSelected"]</button>
+</div>
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th><input type="checkbox" checked="@selectAll" @onchange="OnSelectAllChanged" /></th>
+            <th @onclick='() => SortForms("Template")' class="sortable-header @(GetSortClass("Template"))">@Loc["Template"]</th>
+            <th @onclick='() => SortForms("User")' class="sortable-header @(GetSortClass("User"))">@Loc["User"]</th>
+            <th @onclick='() => SortForms("FilledAt")' class="sortable-header @(GetSortClass("FilledAt"))">@Loc["Date"]</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var form in SortedForms)
+        {
+            <tr style="cursor:pointer;" @onclick="(e) => OnRowClickForm(e, form.Id)">
+                <td><input type="checkbox" checked="@selectedForms.Contains(form.Id)" @onchange="e => OnFormSelectionChanged(e, form.Id)" @onclick:stopPropagation /></td>
+                <td>@(form.Template?.Title ?? "Неизвестно")</td>
+                <td>@(form.User?.Email ?? "Неизвестно")</td>
+                <td>@form.FilledAt.ToShortDateString()</td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@code {
+    private List<Form> forms = new();
+    private List<int> selectedForms = new();
+    private bool selectAll = false;
+    private string sortColumn = "FilledAt";
+    private bool sortAscending = true;
+    private List<Form> SortedForms => GetSorted(forms, sortColumn, sortAscending);
+    protected override void OnInitialized()
+    {
+        forms = FormService.GetAllForms();
+    }
+    private void SortForms(string column)
+    {
+        if (sortColumn == column)
+            sortAscending = !sortAscending;
+        else
+        {
+            sortColumn = column;
+            sortAscending = true;
+        }
+    }
+    private string GetSortClass(string field)
+    {
+        if (sortColumn == field)
+        {
+            return sortAscending ? "sort-asc" : "sort-desc";
+        }
+        return string.Empty;
+    }
+    private void OnSelectAllChanged(ChangeEventArgs e)
+    {
+        bool newValue = (bool)e.Value;
+        selectAll = newValue;
+        if (selectAll)
+            selectedForms = SortedForms.Select(f => f.Id).ToList();
+        else
+            selectedForms.Clear();
+    }
+    private void OnFormSelectionChanged(ChangeEventArgs e, int formId)
+    {
+        var isChecked = (bool)e.Value;
+        if (isChecked)
+        {
+            if (!selectedForms.Contains(formId))
+                selectedForms.Add(formId);
+        }
+        else
+        {
+            selectedForms.Remove(formId);
+        }
+        selectAll = selectedForms.Count == SortedForms.Count && SortedForms.Count > 0;
+    }
+    private void DeleteForm(int formId)
+    {
+        FormService.DeleteForm(formId);
+        forms.RemoveAll(f => f.Id == formId);
+    }
+    private void DeleteSelectedForms()
+    {
+        foreach (var id in selectedForms.ToList())
+        {
+            DeleteForm(id);
+        }
+        selectedForms.Clear();
+        selectAll = false;
+    }
+    private List<Form> GetSorted(List<Form> forms, string column, bool ascending)
+    {
+        var query = forms.AsQueryable();
+        switch (column)
+        {
+            case "Template":
+                query = ascending ? query.OrderBy(f => f.Template.Title) : query.OrderByDescending(f => f.Template.Title);
+                break;
+            case "User":
+                query = ascending ? query.OrderBy(f => f.User.Email) : query.OrderByDescending(f => f.User.Email);
+                break;
+            case "FilledAt":
+                query = ascending ? query.OrderBy(f => f.FilledAt) : query.OrderByDescending(f => f.FilledAt);
+                break;
+            default:
+                query = ascending ? query.OrderBy(f => f.FilledAt) : query.OrderByDescending(f => f.FilledAt);
+                break;
+        }
+        return query.ToList();
+    }
+    private void OnRowClickForm(MouseEventArgs e, int formId)
+    {
+        Navigation.NavigateTo($"/filled/{formId}");
+    }
+} 

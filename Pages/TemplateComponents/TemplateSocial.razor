@@ -1,0 +1,79 @@
+@using FormsApp.Data
+@inject LocalizationService Loc
+
+@if (Template.Id > 0)
+{
+    
+    <br />
+    <div class="likes-section">
+        <span class="likes-count">@Likes</span>
+        <button class="like-btn @(UserLiked ? "liked" : "")" @onclick="OnAddLike">@Loc["Like"]</button>
+    </div>
+
+    <div class="comments-section">
+        
+        <div class="comments-header">
+            <span class="comments-count">@Loc["Comments"]: @Comments.Count</span>
+        </div>
+        
+        <div class="comment-form">
+            <textarea class="comment-textarea" 
+                      placeholder="@Loc["LeaveComment"]" 
+                      value="@CommentText"
+                      @oninput="OnCommentTextChanged"
+                      disabled="@(UserId == null)"></textarea>
+            <button class="comment-submit-btn" 
+                    @onclick="OnAddComment" 
+                    disabled="@(string.IsNullOrWhiteSpace(CommentText) || UserId == null)">
+                @Loc["AddComment"]
+            </button>
+        </div>
+        
+        <ul class="comments-list">
+            @foreach (var comment in Comments)
+            {
+                <li class="comment-item">
+                    <div class="comment-header">
+                        <span class="comment-author">@(comment.User?.UserName ?? comment.UserId)</span>
+                        <div class="comment-actions">
+                            <span class="comment-date">@comment.CreatedAt.ToString("dd.MM.yyyy HH:mm")</span>
+                            @if (CanDeleteComment(comment))
+                            {
+                                <button class="comment-delete-btn" @onclick="() => OnDeleteComment.InvokeAsync(comment.Id)" title="@Loc["DeleteComment"]">
+                                    <i class="oi oi-trash"></i>
+                                </button>
+                            }
+                        </div>
+                    </div>
+                    <p class="comment-text">@comment.Text</p>
+                </li>
+            }
+        </ul>
+    </div>
+}
+
+@code {
+    [Parameter] public Template Template { get; set; } = new();
+    [Parameter] public int Likes { get; set; }
+    [Parameter] public bool UserLiked { get; set; }
+    [Parameter] public List<Comment> Comments { get; set; } = new();
+    [Parameter] public string CommentText { get; set; } = string.Empty;
+    [Parameter] public string? UserId { get; set; }
+    [Parameter] public bool CanEdit { get; set; }
+    [Parameter] public EventCallback OnAddLike { get; set; }
+    [Parameter] public EventCallback OnAddComment { get; set; }
+    [Parameter] public EventCallback<int> OnDeleteComment { get; set; }
+    [Parameter] public EventCallback<string> CommentTextChanged { get; set; }
+
+    private async Task OnCommentTextChanged(ChangeEventArgs e)
+    {
+        var newValue = e.Value?.ToString() ?? string.Empty;
+        await CommentTextChanged.InvokeAsync(newValue);
+    }
+
+    private bool CanDeleteComment(Comment comment)
+    {
+        if (UserId == null) return false;
+        return CanEdit || comment.UserId == UserId;
+    }
+} 

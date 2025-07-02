@@ -1,0 +1,62 @@
+@using FormsApp.Data
+@inject LocalizationService Loc
+@using FormsApp.Shared
+
+<SortableTable TItem="Form"
+               Items="FormsSorted"
+               Columns="columns"
+               SortField="SortField"
+               SortDirection="@(SortDirection)"
+               OnSort="OnSort"
+               OnRowClick="HandleNavigateToForm">
+    <RowTemplate Context="form">
+        <td>@form.Template?.Title</td>
+        <td>@(form.Template?.AuthorId != null && UserNames.ContainsKey(form.Template.AuthorId) ? UserNames[form.Template.AuthorId] : form.Template?.AuthorId)</td>
+        <td>@TruncateDescription(form.Template?.Description ?? string.Empty)</td>
+        <td>@form.FilledAt.ToShortDateString()</td>
+        <td>
+            <button class="btn btn-danger btn-sm delete-button" @onclick="(e) => HandleDeleteForm(form.Id)" @onclick:stopPropagation>×</button>
+        </td>
+    </RowTemplate>
+</SortableTable>
+
+@code {
+    [Parameter] public List<Form> FormsSorted { get; set; } = new();
+    [Parameter] public Dictionary<string, string> UserNames { get; set; } = new();
+    [Parameter] public string SortField { get; set; } = "created";
+    [Parameter] public string SortDirection { get; set; } = "desc";
+    [Parameter] public EventCallback<string> OnSort { get; set; }
+    [Parameter] public EventCallback<int> OnNavigateToForm { get; set; }
+    [Parameter] public EventCallback<int> OnDeleteForm { get; set; }
+
+    private List<SortableTable<Form>.SortableColumn> columns;
+
+    protected override void OnInitialized()
+    {
+        columns = new()
+        {
+            new() { Title = Loc["Title"], Field = "title", Sortable = true },
+            new() { Title = Loc["Author"], Field = "author", Sortable = true },
+            new() { Title = Loc["Description"], Field = "description", Sortable = true },
+            new() { Title = Loc["CreatedDate"], Field = "created", Sortable = true },
+            new() { Title = "", Field = "actions", Sortable = false }
+        };
+    }
+
+    private async Task HandleNavigateToForm(Form form)
+    {
+        await OnNavigateToForm.InvokeAsync(form.Id);
+    }
+    private async Task HandleDeleteForm(int id)
+    {
+        await OnDeleteForm.InvokeAsync(id);
+    }
+    private string TruncateDescription(string description)
+    {
+        if (string.IsNullOrEmpty(description))
+            return string.Empty;
+        if (description.Length <= 100)
+            return description;
+        return description.Substring(0, 100) + "...";
+    }
+} 

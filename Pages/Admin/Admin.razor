@@ -1,0 +1,79 @@
+@page "/admin"
+@using FormsApp.Data
+@using FormsApp.Pages.AdminComponents
+@inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@inject LocalizationService Loc
+
+<PageTitle>@Loc["Admin"]</PageTitle>
+
+@if (!isAdmin)
+{
+    <div class="container mt-5">
+        <div class="alert alert-danger" role="alert">
+            <h4 class="alert-heading">@Loc["AccessDenied"]</h4>
+            <p>@Loc["AccessDeniedMessage"]</p>
+        </div>
+    </div>
+}
+else
+{
+    <div class="container mt-4">
+        <ul class="nav nav-tabs">
+            <li class="nav-item">
+                <a class="nav-link @(activeTab == "users" ? "active" : "")" href="#" @onclick='() => SetTab("users")' @onclick:preventDefault>@Loc["Users"]</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link @(activeTab == "templates" ? "active" : "")" href="#" @onclick='() => SetTab("templates")' @onclick:preventDefault>@Loc["Templates"]</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link @(activeTab == "forms" ? "active" : "")" href="#" @onclick='() => SetTab("forms")' @onclick:preventDefault>@Loc["Forms"]</a>
+            </li>
+        </ul>
+        <div class="tab-content mt-3">
+            @if (activeTab == "users")
+            {
+                <AdminUsers />
+            }
+            else if (activeTab == "templates")
+            {
+                <AdminTemplates />
+            }
+            else if (activeTab == "forms")
+            {
+                <AdminForms />
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private bool isAdmin = false;
+    private string activeTab = "users";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        isAdmin = user.Identity?.IsAuthenticated == true && 
+                  user.Claims.Any(c => c.Type == "role" && c.Value == "Admin");
+        if (!isAdmin)
+        {
+            Navigation.NavigateTo("/");
+            return;
+        }
+        var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
+        var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
+        var tab = query.Get("tab");
+        if (!string.IsNullOrEmpty(tab) && new[] { "users", "templates", "forms" }.Contains(tab))
+        {
+            activeTab = tab;
+        }
+    }
+
+    private void SetTab(string tab)
+    {
+        activeTab = tab;
+        Navigation.NavigateTo($"/admin?tab={tab}");
+    }
+} 

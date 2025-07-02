@@ -1,0 +1,86 @@
+@page "/filled/{Id:int}"
+@using FormsApp.Data
+@using Microsoft.EntityFrameworkCore
+@inject LocalizationService Loc
+@inject NavigationManager Navigation
+@inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
+@inject IFormService FormService
+
+<PageTitle>@Loc["FilledFormTitle"]</PageTitle>
+
+<div class="container mt-4">
+    <h2>
+        @if (Template != null)
+        {
+            <a href="@($"/template/{Template.Id}")" style="color: inherit; text-decoration: none; cursor: pointer;">
+                @Template.Title
+            </a>
+        }
+        else
+        {
+            @Template?.Title
+        }
+    </h2>
+    <p>@Template?.Description</p>
+    <div class="mb-3">
+        <b>@Loc["Author"]:</b> @(Form?.User?.Email != null ? Form.User.Email.Split('@')[0] : Form?.UserId) <br />
+        <b>@Loc["FilledAt"]:</b> @Form?.FilledAt.ToShortDateString()
+    </div>
+    <div>
+        <table class="table table-bordered">
+            <thead>
+                <tr>
+                    <th>@Loc["Question"]</th>
+                    <th>@Loc["Answer"]</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var field in Template?.Fields.Where(f => f.ShowInResults) ?? new List<FormField>())
+                {
+                    var answer = Form?.Answers.FirstOrDefault(a => a.FieldId == field.Id);
+                    <tr>
+                        <td>@field.Label</td>
+                        <td>@(answer != null ? answer.Value : Loc["NoAnswer"])</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    
+    <div class="mt-4">
+        @if (canEdit)
+        {
+            <a href="@($"/fill/{Template?.Id}")" class="btn btn-primary" style="color: #fff !important;">
+                @Loc["EditAnswer"]
+            </a>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public int Id { get; set; }
+    private Form? Form;
+    private Template? Template;
+    private bool canEdit;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Form = FormService.GetFormById(Id);
+        if (Form != null)
+        {
+            Template = Form.Template;
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+            if (user.Identity?.IsAuthenticated == true)
+            {
+                var currentUserId = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                var isAdmin = user.Claims.Any(c => c.Type == "role" && c.Value == "Admin");
+                canEdit = Form.UserId == currentUserId || isAdmin;
+            }
+            else
+            {
+                canEdit = false;
+            }
+        }
+    }
+} 

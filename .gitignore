@@ -1,0 +1,16 @@
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.dbmdl
+*.log
+*.pdb
+*.cache
+*.publish/
+*.swp
+*.DS_Store
+*.userprefs
+*.usersecrets/

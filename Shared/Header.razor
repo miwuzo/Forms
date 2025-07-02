@@ -1,0 +1,138 @@
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Web
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthStateProvider
+@inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResource> L
+@inject LocalizationService Loc
+
+<div class="d-flex align-items-center justify-content-between p-2 border-bottom bg-body">
+   <div>
+        <button class="btn btn-link" @onclick='() => ChangeCulture("ru")'>RUS</button>
+        <button class="btn btn-link" @onclick='() => ChangeCulture("en")'>ENG</button>
+    </div>
+
+    <div>
+        <button class="btn btn-outline-secondary me-2" @onclick="ToggleTheme">@themeText</button>
+    </div>
+
+    <form class="d-flex" @onsubmit="OnSearchSubmit">
+        <input class="form-control me-2" type="search" placeholder="@Loc["SearchPlaceholder"]" @bind="searchQuery" />
+        <select class="form-select me-2" @bind="selectedTopic">
+            <option value="">@Loc["AllTopics"]</option>
+            @foreach (var topic in topics)
+            {
+                <option value="@topic">@topic</option>
+            }
+        </select>
+        <input class="form-control me-2" type="text" placeholder="@Loc["Author"]" @bind="authorQuery" />
+        <button class="btn btn-primary" type="submit">@Loc["Find"]</button>
+    </form>
+
+    <div>
+        @if (isAuthenticated)
+        {
+            <span class="me-2">@userName</span>
+            <button class="btn btn-outline-danger" @onclick="Logout">@Loc["Logout"]</button>
+        }
+        else
+        {
+            <button class="btn btn-outline-primary me-2" @onclick='Login'>@Loc["Login"]</button>
+            <button class="btn btn-primary" @onclick='Register'>@Loc["Register"]</button>
+        }
+    </div>
+</div>
+
+@code {
+    private string searchQuery = string.Empty;
+    private string authorQuery = string.Empty;
+    private string selectedTopic = string.Empty;
+    private bool isDark = false;
+    private bool isAuthenticated = false;
+    private List<string> topics = new() { "IT", "Образование", "Бизнес" };
+    private string? userName;
+    private bool _disposed;
+
+    [Parameter] public EventCallback<string> OnSearchTemplates { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _disposed = false;
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        isAuthenticated = authState.User.Identity?.IsAuthenticated ?? false;
+        if (isAuthenticated)
+        {
+            userName = authState.User.Identity?.Name;
+        }
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+    }
+
+    private async Task ToggleTheme()
+    {
+        if (_disposed) return;
+        try
+        {
+            isDark = !isDark;
+            await JS.InvokeVoidAsync("themeHelper.setTheme", isDark);
+        }
+        catch (TaskCanceledException) { }
+        catch (Exception) { }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !_disposed)
+        {
+            try
+            {
+                isDark = await JS.InvokeAsync<bool>("themeHelper.getTheme");
+                StateHasChanged();
+            }
+            catch (TaskCanceledException) { }
+            catch (Exception) { }
+        }
+    }
+
+    private void ChangeCulture(string culture)
+    {
+        Loc.SetCulture(culture);
+        var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
+        var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
+        query["culture"] = culture;
+        
+        var newUri = $"{uri.GetLeftPart(UriPartial.Path)}?{query}";
+        Navigation.NavigateTo(newUri, forceLoad: true);
+    }
+
+    private void OnSearchSubmit()
+    {
+        Navigation.NavigateTo($"/?search={searchQuery}&topic={selectedTopic}&author={authorQuery}", forceLoad: true);
+    }
+
+    private async Task Logout()
+    {
+        if (_disposed) return;
+        try
+        {
+            await JS.InvokeVoidAsync("logout");
+        }
+        catch (TaskCanceledException) { }
+        catch (Exception) { }
+    }
+
+    private void Login()
+    {
+        Navigation.NavigateTo("/Identity/Account/Login", true);
+    }
+
+    private void Register()
+    {
+        Navigation.NavigateTo("/Identity/Account/Register", true);
+    }
+
+    [Inject] IJSRuntime JS { get; set; } = default!;
+    private string themeText => isDark ? Loc["ThemeLight"] : Loc["ThemeDark"];
+} 

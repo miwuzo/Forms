@@ -1,0 +1,90 @@
+@using FormsApp.Data
+@using Microsoft.AspNetCore.Components.Forms
+
+@if (_editContext != null && Template != null && Model != null && Form != null)
+{
+    <div>DEBUG: EditContext OK, Template OK, Model OK, Form OK</div>
+    <EditForm EditContext="_editContext" OnValidSubmit="OnSubmit">
+        @foreach (var field in Template.Fields.OrderBy(f => f.Order))
+        {
+            <div class="mb-3">
+                <label>@field.Label</label>
+                @if (field.Type == FieldType.Checkbox)
+                {
+                    <InputCheckbox class="form-check-input" @bind-Value="Model.BoolAnswers[field.Id]" />
+                }
+                else if (field.Type == FieldType.Integer)
+                {
+                    <InputNumber class="form-control" @bind-Value="Model.IntAnswers[field.Id]" />
+                }
+                else if (field.Type == FieldType.String)
+                {
+                    <InputText class="form-control" @bind-Value="Model.StringAnswers[field.Id]" />
+                }
+                else if (field.Type == FieldType.MultilineText)
+                {
+                    <InputTextArea class="form-control" @bind-Value="Model.StringAnswers[field.Id]" />
+                }
+            </div>
+        }
+        <button class="btn btn-primary" type="submit">Сохранить</button>
+    </EditForm>
+    @if (!string.IsNullOrEmpty(successMessage))
+    {
+        <div class="alert alert-success mt-2">@successMessage</div>
+    }
+}
+else
+{
+    <div>
+        Загрузка...<br />
+        _editContext: @_editContext<br />
+        Template: @((Template == null ? "null" : "OK"))<br />
+        Model: @((Model == null ? "null" : "OK"))<br />
+        Form: @((Form == null ? "null" : "OK"))<br />
+    </div>
+}
+
+@code {
+    [Parameter] public Template Template { get; set; } = default!;
+    [Parameter] public EditFilledFormModel Model { get; set; } = default!;
+    [Parameter] public Form Form { get; set; } = default!;
+    [Parameter] public bool CanEdit { get; set; }
+    [Parameter] public EventCallback OnSaved { get; set; }
+    [Parameter] public EventCallback<string> OnSuccess { get; set; }
+
+    private EditContext? _editContext;
+    private string successMessage = string.Empty;
+
+    protected override void OnParametersSet()
+    {
+        if (Model != null)
+            _editContext = new EditContext(Model);
+    }
+
+    private void OnSubmit()
+    {
+        if (Form == null || Template == null || !CanEdit)
+            return;
+        foreach (var field in Template.Fields)
+        {
+            var answer = Form.Answers.FirstOrDefault(a => a.FieldId == field.Id);
+            if (answer == null) continue;
+            switch (field.Type)
+            {
+                case FieldType.Checkbox:
+                    answer.Value = Model.BoolAnswers.TryGetValue(field.Id, out var b) && b ? "true" : "false";
+                    break;
+                case FieldType.Integer:
+                    answer.Value = Model.IntAnswers.TryGetValue(field.Id, out var i) ? i.ToString() : "0";
+                    break;
+                default:
+                    answer.Value = Model.StringAnswers.TryGetValue(field.Id, out var s) ? s : string.Empty;
+                    break;
+            }
+        }
+        successMessage = "Изменения сохранены.";
+        OnSaved.InvokeAsync();
+        OnSuccess.InvokeAsync(successMessage);
+    }
+} 

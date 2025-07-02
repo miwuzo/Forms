@@ -1,0 +1,124 @@
+﻿@page "/"
+@using FormsApp.Data
+@using FormsApp.Shared
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Identity
+
+<PageTitle>@Loc["MainPageTitle"]</PageTitle>
+
+<div class="container mt-4">
+    @if (!string.IsNullOrEmpty(filterTag))
+    {
+        <div class="alert ">
+            <strong>@filterTag</strong> 
+            <a href="/" class="btn btn-sm btn-outline-secondary ms-2">×</a>
+        </div>
+    }
+    
+
+    @if (!string.IsNullOrEmpty(searchQuery) || !string.IsNullOrEmpty(filterTag) || !string.IsNullOrEmpty(filterAuthor) || !string.IsNullOrEmpty(filterTopic))
+    {
+        <h2>@(string.IsNullOrEmpty(searchQuery) ? 
+            (!string.IsNullOrEmpty(filterAuthor) ? @filterAuthor : 
+            (!string.IsNullOrEmpty(filterTopic) ? @filterTopic : 
+            @filterTag)) : 
+            @searchQuery)</h2>
+        @if (SearchResults.Any())
+        {
+           
+            <SortableTable TItem="Template"
+                           Items="SearchResults"
+                           Columns="searchColumns"
+                           SortField="searchSortField"
+                           SortDirection="searchSortDirection"
+                           OnSort="@(field => SortSearchResults(field))"
+                           OnRowClick="@(template => NavigateToTemplate(template.Id))">
+                <RowTemplate Context="template">
+                    <td>@template.Title</td>
+                    <td>@TruncateDescription(template.Description)</td>
+                    <td>@GetUserNickname(template.AuthorId)</td>
+                    <td>@template.Forms.Count</td>
+                    <td>@template.CreatedAt.ToShortDateString()</td>
+                </RowTemplate>
+            </SortableTable>
+            @if (TotalPages > 1)
+            {
+                <nav aria-label="Навигация по страницам">
+                    <ul class="pagination justify-content-center">
+                        <li class="page-item @(CurrentPage == 1 ? "disabled" : "")">
+                            <button class="page-link" @onclick="() => ChangePage(CurrentPage - 1)" disabled="@(CurrentPage == 1)">←</button>
+                        </li>
+                        @for (int i = Math.Max(1, CurrentPage - 2); i <= Math.Min(TotalPages, CurrentPage + 2); i++)
+                        {
+                            var pageNumber = i;
+                            <li class="page-item @(pageNumber == CurrentPage ? "active" : "")">
+                                <button class="page-link" @onclick="() => ChangePage(pageNumber)">@pageNumber</button>
+                            </li>
+                        }
+                        <li class="page-item @(CurrentPage == TotalPages ? "disabled" : "")">
+                            <button class="page-link" @onclick="() => ChangePage(CurrentPage + 1)" disabled="@(CurrentPage == TotalPages)">→</button>
+                        </li>
+                    </ul>
+                </nav>
+            }
+        }
+        else
+        {
+            <div class="alert text-center mt-4">
+                <span style="font-size: 3rem;">@Loc["NothingFound"]</span>
+            </div>
+        }
+    }
+    else
+    {
+        <TagCloud />
+        <br />
+        <br />
+        @if (LastTemplatesSorted.Any())
+        {
+            <h2>@Loc["LatestTemplates"]</h2>
+            <SortableTable TItem="Template"
+                           Items="LastTemplatesSorted"
+                           Columns="latestColumns"
+                           SortField="latestSortField"
+                           SortDirection="latestSortDirection"
+                           OnSort="@(field => SortLatestTemplates(field))"
+                           OnRowClick="@(template => NavigateToTemplate(template.Id))">
+                <RowTemplate Context="template">
+                    <td>@template.Title</td>
+                    <td>@TruncateDescription(template.Description)</td>
+                    <td>@GetUserNickname(template.AuthorId)</td>
+                    <td>@template.CreatedAt.ToShortDateString()</td>
+                </RowTemplate>
+            </SortableTable>
+        }
+        @if (PopularTemplatesSorted.Any())
+        {
+            <br />
+            <br />
+            <h2>@Loc["PopularTemplates"]</h2>
+            <SortableTable TItem="Template"
+                           Items="PopularTemplatesSorted"
+                           Columns="popularColumns"
+                           SortField="popularSortField"
+                           SortDirection="popularSortDirection"
+                           OnSort="@(field => SortPopularTemplates(field))"
+                           OnRowClick="@(template => NavigateToTemplate(template.Id))">
+                <RowTemplate Context="template">
+                    <td>@template.Title</td>
+                    <td>@TruncateDescription(template.Description)</td>
+                    <td>@GetUserNickname(template.AuthorId)</td>
+                    <td>@template.Forms.Count</td>
+                </RowTemplate>
+            </SortableTable>
+        }
+        @if (!LastTemplatesSorted.Any() && !PopularTemplatesSorted.Any())
+        {
+            <br />
+            <br />
+            <div class="alert alert-info text-center mt-4">
+                <span style="font-size: 4rem;">❌</span>
+            </div>
+        }
+    }
+</div>

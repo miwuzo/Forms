@@ -1,0 +1,610 @@
+@page "/template/{Id:int?}"
+@using FormsApp.Data
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.WebUtilities
+@using FormsApp.Pages.TemplateComponents
+@inject LocalizationService Loc
+@inject NavigationManager Navigation
+@inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
+@inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResource> L
+@inject ITemplateService TemplateService
+@inject IFormService FormService
+@inject IUserService UserService
+@inject ICommentService CommentService
+@inject ILikeService LikeService
+@inject ITagService TagService
+
+@code {
+    [Parameter] public int? Id { get; set; }
+    private Template Template = new() { Fields = new List<FormField>(), Forms = new List<Form>() };
+    private string accessType = "all";
+    private string emails = string.Empty;
+    private string roles = string.Empty;
+    private bool canEdit = false;
+    private int? dragFieldId = null;
+    private string? validationError;
+    private string activeTab = "general";
+    private FieldType newFieldType = FieldType.String;
+    private int likes = 0;
+    private bool userLiked = false;
+    private string? userId;
+    private List<Comment> comments = new();
+    private string commentText = string.Empty;
+    private bool hasAccessToFill = false;
+    private bool hasAccessToView = false;
+    private bool isInitialized = false;
+    
+    private string sortColumn = "FilledAt";
+    private bool sortAscending = false;
+    private List<Form> sortedForms = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        if (!authState.User.Identity?.IsAuthenticated ?? true)
+        {
+            Navigation.NavigateTo("/Identity/Account/Login", true);
+            return;
+        }
+        
+        var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
+        if (QueryHelpers.ParseQuery(uri.Query).TryGetValue("tab", out var tabValues))
+        {
+            var tab = tabValues.FirstOrDefault();
+            if (!string.IsNullOrEmpty(tab) && new[] { "general", "access", "results", "questions", "analytics" }.Contains(tab))
+            {
+                activeTab = tab;
+            }
+        }
+        
+        if (Id.HasValue)
+        {
+            Template = TemplateService.GetTemplateById(Id.Value) ?? Template;
+            
+            if (Template.Id > 0)
+            {
+                hasAccessToView = await CheckAccessToTemplate(Template.Id, authState.User);
+                if (!hasAccessToView)
+                {
+                    return;
+                }
+                var accessRules = TemplateService.GetAccessRules(Template.Id);
+                if (accessRules.Any())
+                {
+                    if (accessRules.Any(r => r.Email == null && r.Role == null))
+                    {
+                        accessType = "all";
+                        emails = string.Empty;
+                        roles = string.Empty;
+                    }
+                    else if (accessRules.All(r => r.Email != null && r.Role == null))
+                    {
+                        accessType = "email";
+                        emails = string.Join(", ", accessRules.Where(r => !string.IsNullOrWhiteSpace(r.Email)).Select(r => r.Email));
+                        roles = string.Empty;
+                    }
+                    else if (accessRules.All(r => r.Role != null && r.Email == null))
+                    {
+                        accessType = "role";
+                        roles = string.Join(", ", accessRules.Where(r => !string.IsNullOrWhiteSpace(r.Role)).Select(r => r.Role));
+                        emails = string.Empty;
+                    }
+                    else
+                    {
+                        accessType = "all";
+                        emails = string.Empty;
+                        roles = string.Empty;
+                    }
+                }
+            }
+            
+            var user = authState.User;
+            userId = user.Identity?.IsAuthenticated == true ? user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value : null;
+            canEdit = user.Identity?.IsAuthenticated == true && (userId == Template.AuthorId || user.Claims.Any(c => c.Type == "role" && c.Value == "Admin"));
+            
+            hasAccessToFill = await CheckAccessToTemplate(Template.Id, user);
+            
+            if (Template.Id > 0 && !canEdit && hasAccessToFill)
+            {
+                Navigation.NavigateTo($"/fill/{Template.Id}", true);
+                return;
+            }
+            
+            ApplySorting();
+        }
+        likes = LikeService.GetLikesCount(Template.Id);
+        userLiked = userId != null && LikeService.UserLiked(Template.Id, userId);
+        comments = CommentService.GetCommentsByTemplateId(Template.Id);
+        
+        isInitialized = true;
+    }
+}
+
+<PageTitle>@Loc["Template"]</PageTitle>
+
+@if (!isInitialized)
+{
+    <div class="container mt-4">
+        <div class="text-center">
+            <div class="spinner-border" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+        </div>
+    </div>
+}
+else if (Id.HasValue && Template.Id > 0 && !hasAccessToView)
+{
+    <div class="container mt-4">
+        <div class="alert alert-danger">
+            <h4>@Loc["AccessDenied"]</h4>
+            <p>@Loc["NoAccessToView"]</p>
+            <p>@Loc["ContactTemplateOwner"]</p>
+            <a href="/" class="btn btn-primary">@Loc["BackToMain"]</a>
+        </div>
+    </div>
+}
+else
+{
+    <div class="container mt-4">
+        <ul class="nav nav-tabs">
+            <li class="nav-item">
+                <a class="nav-link @(activeTab == "general" ? "active" : "")" href="#" @onclick='() => SetTab("general")' @onclick:preventDefault>@Loc["GeneralSettings"]</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link @(activeTab == "access" ? "active" : "")" href="#" @onclick='() => SetTab("access")' @onclick:preventDefault>@Loc["Access"]</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link @(activeTab == "results" ? "active" : "")" href="#" @onclick='() => SetTab("results")' @onclick:preventDefault>@Loc["Results"]</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link @(activeTab == "questions" ? "active" : "")" href="#" @onclick='() => SetTab("questions")' @onclick:preventDefault>@Loc["Questions"]</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link @(activeTab == "analytics" ? "active" : "")" href="#" @onclick='() => SetTab("analytics")' @onclick:preventDefault>@Loc["Analytics"]</a>
+            </li>
+        </ul>
+        <div class="tab-content mt-3">
+            @if (activeTab == "general")
+            {
+                <TemplateGeneralTab 
+                    Template="Template"
+                    canEdit="canEdit"
+                    hasAccessToFill="hasAccessToFill"
+                    validationError="validationError"
+                    SaveTemplate="SaveTemplate"
+                    CreateTemplate="CreateTemplate" />
+            }
+            
+            @if (activeTab == "questions")
+            {
+                <TemplateQuestionsTab 
+                    Template="Template"
+                    canEdit="canEdit"
+                    hasAccessToFill="hasAccessToFill"
+                    newFieldType="newFieldType"
+                    dragFieldId="dragFieldId"
+                    AddField="AddField"
+                    RemoveField="RemoveField"
+                    OnDragStart="OnDragStart"
+                    OnDrop="OnDrop"
+                    OnDragOver="OnDragOver" />
+            }
+            
+            @if (activeTab == "access")
+            {
+                <div>
+                    @if (canEdit)
+                    {
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">@Loc["AccessType"]:</label>
+                            <select class="form-select" @bind="accessType">
+                                <option value="all">@Loc["AllAuthorizedUsers"]</option>
+                                <option value="email">@Loc["ByEmail"]</option>
+                                <option value="role">@Loc["ByRole"]</option>
+                            </select>
+                        </div>
+                        
+                        @if (accessType == "email")
+                        {
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">@Loc["EmailAddresses"]:</label>
+                                <input class="form-control" @bind="emails" placeholder="email1@example.com, email2@example.com" />
+                                <div class="form-text">@Loc["EmailAddressesHelp"]</div>
+                            </div>
+                        }
+                        
+                        @if (accessType == "role")
+                        {
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">@Loc["Roles"]:</label>
+                                <input class="form-control" @bind="roles" placeholder="Admin, User" />
+                                <div class="form-text">@Loc["RolesHelp"]</div>
+                            </div>
+                        }
+                        
+                        <button class="btn btn-primary" @onclick="SaveAccess">@Loc["SaveAccess"]</button>
+                        
+                        @if (!string.IsNullOrEmpty(validationError))
+                        {
+                            <div class="alert alert-success mt-3">@validationError</div>
+                        }
+                    }
+                    else
+                    {
+                        <div class="alert alert-warning">
+                            <p class="mb-0">@Loc["NoAccessRights"]</p>
+                        </div>
+                    }
+                </div>
+            }
+            
+            @if (activeTab == "results")
+            {
+                <TemplateResultsTab 
+                    Template="Template"
+                    sortedForms="sortedForms"
+                    sortColumn="sortColumn"
+                    sortAscending="sortAscending"
+                    SortResults="SortResults"
+                    NavigateToForm="NavigateToForm"
+                    canEdit="canEdit"
+                    OnDeleteForm="DeleteFormFromResults" />
+            }
+            
+            @if (activeTab == "analytics")
+            {
+                <TemplateAnalyticsTab 
+                    Template="Template" />
+            }
+        </div>
+        
+        
+        <TemplateSocial 
+            Template="Template"
+            Likes="likes"
+            UserLiked="userLiked"
+            Comments="comments"
+            CommentText="commentText"
+            UserId="userId"
+            CanEdit="canEdit"
+            OnAddLike="AddLike"
+            OnAddComment="AddComment"
+            OnDeleteComment="DeleteComment"
+            CommentTextChanged="(value) => commentText = value" />
+    </div>
+}
+
+@code {
+    private void SetTab(string tab) 
+    {
+        activeTab = tab;
+    }
+
+    private void SaveTemplate()
+    {
+        TemplateService.SaveTemplate(Template);
+        TagService.SyncTagsFromTemplates();
+        validationError = "Изменения сохранены";
+        Navigation.NavigateTo("/user?tab=templates");
+    }
+
+    private void CreateTemplate()
+    {
+        TemplateService.SaveTemplate(Template);
+        TagService.SyncTagsFromTemplates();
+        validationError = "Шаблон создан";
+        Navigation.NavigateTo("/user?tab=templates");
+    }
+
+    private void SaveAccess()
+    {
+        TemplateService.SaveAccessRules(Template.Id, accessType, emails, roles);
+        validationError = "OK";
+    }
+
+    private void AddLike()
+    {
+        if (userId == null) return;
+        if (userLiked)
+        {
+            LikeService.RemoveLike(Template.Id, userId);
+            userLiked = false;
+        }
+        else
+        {
+            LikeService.AddLike(Template.Id, userId);
+            userLiked = true;
+        }
+        likes = LikeService.GetLikesCount(Template.Id);
+    }
+
+    private void AddComment()
+    {
+        if (!string.IsNullOrWhiteSpace(commentText) && userId != null)
+        {
+            CommentService.AddComment(new Comment {
+                TemplateId = Template.Id,
+                UserId = userId,
+                Text = commentText,
+                CreatedAt = DateTime.UtcNow
+            });
+            comments = CommentService.GetCommentsByTemplateId(Template.Id);
+            commentText = string.Empty;
+        }
+    }
+
+    private void DeleteComment(int commentId)
+    {
+        CommentService.DeleteComment(commentId);
+        comments = CommentService.GetCommentsByTemplateId(Template.Id);
+    }
+
+    private void AddField()
+    {
+        if (CanAddField(newFieldType))
+        {
+            var newField = new FormField { Type = newFieldType, Label = "Новый вопрос", Order = Template.Fields.Count + 1 };
+            Template.Fields.Add(newField);
+            if (Template.Id > 0)
+            {
+                TemplateService.SaveTemplate(Template);
+            }
+        }
+    }
+
+    private bool CanAddField(FieldType type)
+    {
+        return Template.Fields.Count(f => f.Type == type) < 4;
+    }
+
+    private void RemoveField(int id)
+    {
+        var field = Template.Fields.FirstOrDefault(f => f.Id == id);
+        if (field != null)
+        {
+            Template.Fields.Remove(field);
+            
+            var orderedFields = Template.Fields.OrderBy(f => f.Order).ToList();
+            for (int i = 0; i < orderedFields.Count; i++)
+            {
+                orderedFields[i].Order = i + 1;
+            }
+            Template.Fields = orderedFields;
+            
+            if (Template.Id > 0)
+            {
+                TemplateService.SaveTemplate(Template);
+            }
+        }
+    }
+
+    private void OnDragStart(int id)
+    {
+        dragFieldId = id;
+    }
+
+    private void OnDragOver()
+    {
+    }
+
+    private void OnDrop(int id)
+    {
+        if (!canEdit || !dragFieldId.HasValue || dragFieldId.Value == id) 
+        {
+            dragFieldId = null;
+            return;
+        }
+
+        try
+        {
+            var fields = Template.Fields.ToList();
+            var fromIndex = fields.FindIndex(f => f.Id == dragFieldId.Value);
+            var toIndex = fields.FindIndex(f => f.Id == id);
+            
+            if (fromIndex >= 0 && toIndex >= 0)
+            {
+                var item = fields[fromIndex];
+                fields.RemoveAt(fromIndex);
+                fields.Insert(toIndex, item);
+                
+                for (int i = 0; i < fields.Count; i++)
+                {
+                    fields[i].Order = i + 1;
+                }
+                
+                Template.Fields = fields;
+                
+                if (Template.Id > 0)
+                {
+                    TemplateService.SaveTemplate(Template);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error in drag & drop: {ex.Message}");
+        }
+        
+        dragFieldId = null;
+    }
+
+    private async Task<bool> CheckAccessToTemplate(int templateId, System.Security.Claims.ClaimsPrincipal user)
+    {
+        var accessRules = TemplateService.GetAccessRules(templateId);
+        
+        if (!accessRules.Any())
+        {
+            return true;
+        }
+        
+        if (accessRules.Any(r => r.Email == null && r.Role == null))
+        {
+            return true;
+        }
+        
+        var userEmail = user.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value;
+        if (!string.IsNullOrEmpty(userEmail) && accessRules.Any(r => r.Email == userEmail))
+        {
+            return true;
+        }
+        
+        var userRoles = user.Claims.Where(c => c.Type == System.Security.Claims.ClaimTypes.Role).Select(c => c.Value);
+        if (userRoles.Any() && accessRules.Any(r => r.Role != null && userRoles.Contains(r.Role)))
+        {
+            return true;
+        }
+        
+        var userId = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (!string.IsNullOrEmpty(userId))
+        {
+            var template = TemplateService.GetTemplateById(templateId);
+            if (template?.AuthorId == userId)
+            {
+                return true;
+            }
+        }
+        
+        if (user.Claims.Any(c => c.Type == "role" && c.Value == "Admin"))
+        {
+            return true;
+        }
+        
+        return false;
+    }
+    
+    private void SortResults(string column)
+    {
+        if (sortColumn == column)
+        {
+            sortAscending = !sortAscending;
+        }
+        else
+        {
+            sortColumn = column;
+            sortAscending = true;
+        }
+        
+        ApplySorting();
+    }
+    
+    private void ApplySorting()
+    {
+        if (Template.Forms == null || !Template.Forms.Any())
+        {
+            sortedForms = new List<Form>();
+            return;
+        }
+        
+        var query = Template.Forms.AsQueryable();
+        
+        switch (sortColumn)
+        {
+            case "UserName":
+                query = sortAscending 
+                    ? query.OrderBy(f => f.User != null ? f.User.UserName : f.UserId)
+                    : query.OrderByDescending(f => f.User != null ? f.User.UserName : f.UserId);
+                break;
+            case "FilledAt":
+                query = sortAscending 
+                    ? query.OrderBy(f => f.FilledAt)
+                    : query.OrderByDescending(f => f.FilledAt);
+                break;
+            default:
+                query = sortAscending 
+                    ? query.OrderBy(f => f.FilledAt)
+                    : query.OrderByDescending(f => f.FilledAt);
+                break;
+        }
+        
+        sortedForms = query.ToList();
+    }
+    
+    private void NavigateToForm(int formId)
+    {
+        Navigation.NavigateTo($"/filled/{formId}");
+    }
+
+    private Task OnAccessTypeChanged(string newType)
+    {
+        accessType = newType;
+        return Task.CompletedTask;
+    }
+
+    private Task OnEmailsChanged(string newEmails)
+    {
+        emails = newEmails;
+        return Task.CompletedTask;
+    }
+
+    private Task OnRolesChanged(string newRoles)
+    {
+        roles = newRoles;
+        return Task.CompletedTask;
+    }
+
+    private void DeleteFormFromResults(int formId)
+    {
+        FormService.DeleteForm(formId);
+        sortedForms = sortedForms.Where(f => f.Id != formId).ToList();
+        StateHasChanged();
+    }
+}
+
+<style>
+    .question-card {
+        cursor: move;
+        position: relative;
+    }
+    
+    .question-card:hover {
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .question-card.dragging {
+        opacity: 0.5;
+    }
+    
+    .question-type-badge .badge {
+        font-size: 0.8em;
+        padding: 0.4em 0.8em;
+    }
+    
+    .question-actions {
+        opacity: 0.7;
+    }
+    
+    .question-card:hover .question-actions {
+        opacity: 1;
+    }
+    
+    .form-select:focus {
+        border-color: #007bff;
+        box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+    }
+    
+    .form-select {
+        color: #007bff;
+    }
+    
+    .selected-type-info {
+        margin-top: 0.25rem;
+        font-size: 0.875em;
+        color: grey;
+    }
+    
+    .table th[style*="cursor: pointer"] {
+        background-color: #f8f9fa;
+        transition: background-color 0.2s ease;
+    }
+    
+    .table th[style*="cursor: pointer"]:hover {
+        background-color: #e9ecef;
+    }
+    
+    .table th[style*="cursor: pointer"]::after {
+        content: "↕";
+        margin-left: 5px;
+        opacity: 0.5;
+        font-size: 0.8em;
+    }
+</style> 
