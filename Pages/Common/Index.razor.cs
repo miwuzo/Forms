@@ -17,7 +17,6 @@ namespace FormsApp.Pages.Common
         private List<Template> LastTemplates = new();
         private List<Template> PopularTemplates = new();
         private List<Template> AllTemplates = new();
-        private List<(string Name, int Count)> Tags = new();
         private string filterTag = string.Empty;
         private string filterTopic = string.Empty;
         private string filterAuthor = string.Empty;
@@ -48,13 +47,10 @@ namespace FormsApp.Pages.Common
         private List<SortableTable<Template>.SortableColumn> popularColumns;
 
         [Inject] NavigationManager Navigation { get; set; }
-        [Inject] IStringLocalizer<SharedResource> L { get; set; }
         [Inject] LocalizationService Loc { get; set; }
         [Inject] AuthenticationStateProvider AuthStateProvider { get; set; }
         [Inject] ITemplateService TemplateService { get; set; }
         [Inject] IUserService UserService { get; set; }
-        [Inject] ITagService TagService { get; set; }
-        [Inject] IHttpContextAccessor HttpContextAccessor { get; set; }
 
         protected override async Task OnInitializedAsync()
         {
@@ -104,72 +100,48 @@ namespace FormsApp.Pages.Common
             Navigation.NavigateTo($"/template/{templateId}");
         }
 
-        private string GetUserNickname(string userId)
+        private Func<string, string> getUserNickname => userId => TableUtils.GetUserNickname(userId, currentUserId, UserNicknames);
+        private Func<string, string> getUserFullName => userId => TableUtils.GetUserFullName(userId, UserNicknames);
+        private Func<Template, bool> hasAccessToTemplate => template => TableUtils.HasAccessToTemplate(template, currentUserId, TemplateService, UserService);
+
+        private List<Template> GetFilteredTemplates()
         {
-            if (userId == currentUserId)
-                return "Вы";
-            if (UserNicknames.TryGetValue(userId, out string nickname))
-            {
-                int atIndex = nickname.IndexOf('@');
-                if (atIndex > 0)
-                    return nickname.Substring(0, atIndex);
-                return nickname;
-            }
-            return userId;
+            return TableUtils.FilterTemplates(
+                AllTemplates,
+                searchQuery,
+                filterAuthor,
+                filterTag,
+                filterTopic,
+                getUserFullName,
+                hasAccessToTemplate
+            );
         }
 
-        private string GetUserFullName(string userId)
+        private void ApplyLatestSorting()
         {
-            if (UserNicknames.TryGetValue(userId, out string nickname))
-                return nickname;
-            return userId;
+            LastTemplatesSorted = TableUtils.SortTemplates(
+                LastTemplates,
+                latestSortField,
+                latestSortDirection,
+                (field, t) => field == "author" ? getUserNickname(t.AuthorId) : null
+            );
         }
 
-        private string TruncateDescription(string description)
+        private void ApplyPopularSorting()
         {
-            if (string.IsNullOrEmpty(description))
-                return string.Empty;
-            if (description.Length <= 100)
-                return description;
-            return description.Substring(0, 100) + "...";
+            PopularTemplatesSorted = TableUtils.SortTemplates(
+                PopularTemplates,
+                popularSortField,
+                popularSortDirection,
+                (field, t) => field == "author" ? getUserNickname(t.AuthorId) : null
+            );
         }
 
-        private void SortLatestTemplates(string field)
-        {
-            if (latestSortField == field)
-            {
-                latestSortDirection = latestSortDirection == "asc" ? "desc" : "asc";
-            }
-            else
-            {
-                latestSortField = field;
-                latestSortDirection = "asc";
-            }
-            ApplyLatestSorting();
-            StateHasChanged();
-        }
-
-        private void SortPopularTemplates(string field)
-        {
-            if (popularSortField == field)
-            {
-                popularSortDirection = popularSortDirection == "asc" ? "desc" : "asc";
-            }
-            else
-            {
-                popularSortField = field;
-                popularSortDirection = "asc";
-            }
-            ApplyPopularSorting();
-            StateHasChanged();
-        }
-
+        // Для Search — отдельная логика (пагинация, URL)
         private void SortSearchResults(string field)
         {
             if (searchSortField == field)
-            {
                 searchSortDirection = searchSortDirection == "asc" ? "desc" : "asc";
-            }
             else
             {
                 searchSortField = field;
@@ -185,19 +157,16 @@ namespace FormsApp.Pages.Common
         private void UpdateSearchUrl()
         {
             var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
-            var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
-            if (!string.IsNullOrEmpty(searchQuery))
-                query["search"] = searchQuery;
-            if (!string.IsNullOrEmpty(filterTag))
-                query["tag"] = filterTag;
-            if (!string.IsNullOrEmpty(filterAuthor))
-                query["author"] = filterAuthor;
-            if (!string.IsNullOrEmpty(filterTopic))
-                query["topic"] = filterTopic;
-            query["sort"] = searchSortField;
-            query["order"] = searchSortDirection;
-            query["page"] = CurrentPage.ToString();
-            var newUri = $"{uri.GetLeftPart(UriPartial.Path)}?{query}";
+            var newUri = TableUtils.BuildQueryString(
+                uri.GetLeftPart(UriPartial.Path),
+                searchQuery,
+                filterTag,
+                filterAuthor,
+                filterTopic,
+                searchSortField,
+                searchSortDirection,
+                CurrentPage
+            );
             Navigation.NavigateTo(newUri, false, true);
         }
 
@@ -214,79 +183,7 @@ namespace FormsApp.Pages.Common
 
         private void ApplyPagination()
         {
-            var startIndex = (CurrentPage - 1) * PageSize;
-            SearchResults = AllSearchResults.Skip(startIndex).Take(PageSize).ToList();
-        }
-
-        private List<Template> GetFilteredTemplates()
-        {
-            var templates = AllTemplates.ToList();
-            templates = FilterTemplatesByAccess(templates);
-            if (!string.IsNullOrEmpty(searchQuery))
-            {
-                var searchTerms = searchQuery.Split(' ', StringSplitOptions.RemoveEmptyEntries)
-                    .Where(term => !string.IsNullOrWhiteSpace(term))
-                    .Select(term => term.ToLowerInvariant())
-                    .ToList();
-                templates = templates.Where(template =>
-                    searchTerms.All(searchTerm =>
-                        template.Title.ToLowerInvariant().Contains(searchTerm) ||
-                        template.Description.ToLowerInvariant().Contains(searchTerm) ||
-                        template.Tags.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(tag => tag.Trim().ToLowerInvariant()).Any(tag => tag.Contains(searchTerm)) ||
-                        (!string.IsNullOrEmpty(template.Topic) && template.Topic.ToLowerInvariant().Contains(searchTerm)) ||
-                        GetUserFullName(template.AuthorId).ToLowerInvariant().Contains(searchTerm) ||
-                        template.Fields.Any(field => field.Label.ToLowerInvariant().Contains(searchTerm) || field.Description.ToLowerInvariant().Contains(searchTerm))
-                    )
-                ).ToList();
-            }
-            if (!string.IsNullOrEmpty(filterAuthor))
-            {
-                var authorSearchTerm = filterAuthor.ToLowerInvariant();
-                templates = templates.Where(template => GetUserFullName(template.AuthorId).ToLowerInvariant().Contains(authorSearchTerm)).ToList();
-            }
-            if (!string.IsNullOrEmpty(filterTag))
-                templates = templates.Where(t => t.Tags.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim()).Contains(filterTag)).ToList();
-            if (!string.IsNullOrEmpty(filterTopic))
-                templates = templates.Where(t => t.Topic == filterTopic).ToList();
-            return templates;
-        }
-
-        private List<Template> FilterTemplatesByAccess(List<Template> templates)
-        {
-            var filteredTemplates = new List<Template>();
-            foreach (var template in templates)
-            {
-                if (HasAccessToTemplate(template))
-                {
-                    filteredTemplates.Add(template);
-                }
-            }
-            return filteredTemplates;
-        }
-
-        private bool HasAccessToTemplate(Template template)
-        {
-            var accessRules = TemplateService.GetAccessRules(template.Id);
-            if (!accessRules.Any())
-                return true;
-            if (accessRules.Any(r => r.Email == null && r.Role == null))
-                return true;
-            if (currentUserId == null)
-                return accessRules.Any(r => r.Email == null && r.Role == null);
-            var userEmail = UserService.GetUserById(currentUserId)?.Email;
-            if (!string.IsNullOrEmpty(userEmail) && accessRules.Any(r => r.Email == userEmail))
-                return true;
-            var userRoles = new List<string>();
-            var user = UserService.GetUserById(currentUserId);
-            if (user != null && !string.IsNullOrEmpty(user.Role))
-                userRoles.Add(user.Role);
-            if (userRoles.Any() && accessRules.Any(r => r.Role != null && userRoles.Contains(r.Role)))
-                return true;
-            if (template.AuthorId == currentUserId)
-                return true;
-            if (user?.Role == "Admin")
-                return true;
-            return false;
+            SearchResults = TableUtils.ApplyPagination(AllSearchResults, CurrentPage, PageSize);
         }
 
         private void LoadData()
@@ -346,43 +243,42 @@ namespace FormsApp.Pages.Common
                 ApplyLatestSorting();
                 ApplyPopularSorting();
             }
-            Tags = AllTemplates.SelectMany(t => t.Tags.Split(',', StringSplitOptions.RemoveEmptyEntries))
-                .GroupBy(tag => tag.Trim())
-                .Select(g => (g.Key, g.Count()))
-                .OrderByDescending(x => x.Item2)
-                .ToList();
-        }
-
-        private List<Template> SortTemplates(List<Template> templates, string field, string direction)
-        {
-            Func<Template, object> keySelector = field switch
-            {
-                "title" => t => t.Title,
-                "author" => t => GetUserNickname(t.AuthorId),
-                "recent" => t => t.CreatedAt,
-                "created" => t => t.CreatedAt,
-                "popular" => t => t.Forms.Count,
-                "count" => t => t.Forms.Count,
-                _ => t => t.Title
-            };
-            return direction == "asc"
-                ? templates.OrderBy(keySelector).ToList()
-                : templates.OrderByDescending(keySelector).ToList();
-        }
-
-        private void ApplyLatestSorting()
-        {
-            LastTemplatesSorted = SortTemplates(LastTemplates, latestSortField, latestSortDirection);
-        }
-
-        private void ApplyPopularSorting()
-        {
-            PopularTemplatesSorted = SortTemplates(PopularTemplates, popularSortField, popularSortDirection);
         }
 
         private void ApplySearchSorting()
         {
-            AllSearchResults = SortTemplates(AllSearchResults, searchSortField, searchSortDirection);
+            AllSearchResults = TableUtils.SortTemplates(
+                AllSearchResults,
+                searchSortField,
+                searchSortDirection,
+                (field, t) => field == "author" ? getUserNickname(t.AuthorId) : null
+            );
+        }
+
+        private void SortLatestTemplates(string field)
+        {
+            if (latestSortField == field)
+                latestSortDirection = latestSortDirection == "asc" ? "desc" : "asc";
+            else
+            {
+                latestSortField = field;
+                latestSortDirection = "asc";
+            }
+            ApplyLatestSorting();
+            StateHasChanged();
+        }
+
+        private void SortPopularTemplates(string field)
+        {
+            if (popularSortField == field)
+                popularSortDirection = popularSortDirection == "asc" ? "desc" : "asc";
+            else
+            {
+                popularSortField = field;
+                popularSortDirection = "asc";
+            }
+            ApplyPopularSorting();
+            StateHasChanged();
         }
 
         public void Dispose()

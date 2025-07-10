@@ -1,9 +1,8 @@
 @using FormsApp.Data
+@using FormsApp.Shared
 @inject LocalizationService Loc
 @inject IUserService UserService
 @inject NavigationManager NavigationManager
-
-
 
 <div class="admin-toolbar mb-3">
     <div class="row align-items-center">
@@ -14,12 +13,16 @@
                 <option value="unblock">@Loc["Unblock"]</option>
                 <option value="makeAdmin">@Loc["MakeAdmin"]</option>
                 <option value="removeAdmin">@Loc["RemoveAdmin"]</option>
-                <option value="delete">@Loc["Delete"]</option>
             </select>
         </div>
         <div class="col-md-4">
             <button class="btn btn-primary btn-sm" @onclick="ApplyAction" disabled="@(string.IsNullOrEmpty(selectedAction) || !selectedUsers.Any())">
                 @Loc["Apply"]
+            </button>
+            <button class="btn btn-danger btn-sm"
+                    @onclick="@(() => TableUtils.DeleteSelected(selectedUsers, users, DeleteUser, u => u.Id))"
+                    disabled="@(!selectedUsers.Any())">
+                @Loc["DeleteSelected"]
             </button>
         </div>
         <div class="col-md-4">
@@ -31,102 +34,52 @@
     </div>
 </div>
 
-<div class="table-container">
-    <table class="table table-striped admin-table">
-        <thead>
-            <tr>
-                <th>
-                    <input type="checkbox" checked="@selectAll" @onchange="OnSelectAllChanged" />
-                </th>
-                <th class="sortable-header @(GetSortClass("Email"))" @onclick='() => SortUsers("Email")'>
-                    Email
-                </th>
-                <th class="sortable-header @(GetSortClass("Role"))" @onclick='() => SortUsers("Role")'>
-                    @Loc["Role"]
-                </th>
-                <th class="sortable-header @(GetSortClass("IsBlocked"))" @onclick='() => SortUsers("IsBlocked")'>
-                    @Loc["Blocked"]
-                </th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var user in SortedUsers)
-            {
-                <tr @onclick="() => OnUserRowClick(user)" style="cursor:pointer;">
-                    <td>
-                        <input type="checkbox" checked="@selectedUsers.Contains(user.Id)" @onchange="e => OnUserSelectionChanged(e, user.Id)" @onclick:stopPropagation="true" />
-                    </td>
-                    <td>@user.Email</td>
-                    <td>@user.Role</td>
-                    <td>@(user.IsBlocked ? "✔" : "✖")</td>
-                </tr>
-            }
-        </tbody>
-    </table>
-</div>
+<SortableTable TItem="ApplicationUser"
+               Items="SortedUsers"
+               Columns="columns"
+               SortField="sortColumn"
+               SortDirection="@(sortAscending ? "asc" : "desc")"
+               OnSort="OnSort"
+               OnRowClick="OnUserRowClick">
+    <RowTemplate Context="user">
+        <td>
+            <input type="checkbox" checked="@selectedUsers.Contains(user.Id)" @onchange="e => TableUtils.UpdateSelection(e, user.Id, selectedUsers, SortedUsers.Select(u => u.Id).ToList())" @onclick:stopPropagation="true" />
+        </td>
+        <td>@user.Email</td>
+        <td>@user.Role</td>
+        <td>@(user.IsBlocked ? "✔" : "✖")</td>
+    </RowTemplate>
+</SortableTable>
 
 @code {
     private List<ApplicationUser> users = new();
     private string selectedAction = "";
     private List<string> selectedUsers = new();
-    private bool selectAll = false;
     private string sortColumn = "Email";
     private bool sortAscending = true;
-    private List<ApplicationUser> SortedUsers => GetSorted(users, sortColumn, sortAscending);
+    private List<SortableTable<ApplicationUser>.SortableColumn> columns;
+    private Dictionary<string, Func<ApplicationUser, object?>> sortSelectors;
+    private List<ApplicationUser> SortedUsers => TableUtils.GetSorted(users, sortColumn, sortAscending, sortSelectors, "Email");
 
     protected override void OnInitialized()
     {
         users = UserService.GetAllUsers();
+        columns = new()
+        {
+            new() { Title = "", Field = "Select", Sortable = false },
+            new() { Title = "Email", Field = "Email", Sortable = true },
+            new() { Title = Loc["Role"], Field = "Role", Sortable = true },
+            new() { Title = Loc["Blocked"], Field = "IsBlocked", Sortable = true }
+        };
+        sortSelectors = new()
+        {
+            ["Email"] = u => u.Email ?? string.Empty,
+            ["Role"] = u => u.Role ?? string.Empty,
+            ["IsBlocked"] = u => u.IsBlocked
+        };
     }
 
-    private void SortUsers(string column)
-    {
-        if (sortColumn == column)
-            sortAscending = !sortAscending;
-        else
-        {
-            sortColumn = column;
-            sortAscending = true;
-        }
-    }
-
-    private string GetSortClass(string field)
-    {
-        if (sortColumn == field)
-        {
-            return sortAscending ? "sort-asc" : "sort-desc";
-        }
-        return string.Empty;
-    }
-
-    private void OnSelectAllChanged(ChangeEventArgs e)
-    {
-        bool newValue = (bool)e.Value;
-        selectAll = newValue;
-        if (selectAll)
-        {
-            selectedUsers = SortedUsers.Select(u => u.Id).ToList();
-        }
-        else
-        {
-            selectedUsers.Clear();
-        }
-    }
-
-    private void OnUserSelectionChanged(ChangeEventArgs e, string userId)
-    {
-        var isChecked = (bool)e.Value;
-        if (isChecked)
-        {
-            if (!selectedUsers.Contains(userId))
-                selectedUsers.Add(userId);
-        }
-        else
-        {
-            selectedUsers.Remove(userId);
-        }
-        selectAll = selectedUsers.Count == SortedUsers.Count && SortedUsers.Count > 0;
-    }
+    private void OnSort(string column) => TableUtils.OnSort(ref sortColumn, ref sortAscending, column);
 
     private void ApplyAction()
     {
@@ -151,46 +104,17 @@
                     case "removeAdmin":
                         user.Role = "User";
                         break;
-                    case "delete":
-                        users.Remove(user);
-                        break;
                 }
                 if (selectedAction != "delete")
                     UserService.SaveUser(user);
-                else
-                    UserService.DeleteUser(userId);
             }
         }
         users = UserService.GetAllUsers();
         selectedUsers.Clear();
         selectedAction = "";
-        selectAll = false;
     }
 
-    private List<ApplicationUser> GetSorted(List<ApplicationUser> users, string column, bool ascending)
-    {
-        var query = users.AsQueryable();
-        switch (column)
-        {
-            case "Email":
-                query = ascending ? query.OrderBy(u => u.Email) : query.OrderByDescending(u => u.Email);
-                break;
-            case "Role":
-                query = ascending ? query.OrderBy(u => u.Role) : query.OrderByDescending(u => u.Role);
-                break;
-            case "IsBlocked":
-                query = ascending ? query.OrderBy(u => u.IsBlocked) : query.OrderByDescending(u => u.IsBlocked);
-                break;
-            default:
-                query = ascending ? query.OrderBy(u => u.Email) : query.OrderByDescending(u => u.Email);
-                break;
-        }
-        return query.ToList();
-    }
+    private void DeleteUser(string userId) => TableUtils.DeleteItem(userId, users, UserService.DeleteUser, u => u.Id);
 
-    private void OnUserRowClick(ApplicationUser user)
-    {
-        var author = user.UserName ?? user.Email ?? user.Id;
-        NavigationManager.NavigateTo($"/?author={Uri.EscapeDataString(author)}", forceLoad: true);
-    }
+    private void OnUserRowClick(ApplicationUser user) => NavigationManager.NavigateTo($"/?author={Uri.EscapeDataString(user.UserName ?? user.Email ?? user.Id)}", forceLoad: true);
 } 

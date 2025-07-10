@@ -1,136 +1,61 @@
 @using FormsApp.Data
+@using FormsApp.Shared
 @inject LocalizationService Loc
 @inject ITemplateService TemplateService
 @inject NavigationManager Navigation
 
-
 <div class="toolbar mb-2">
-    <button class="btn btn-danger" @onclick="DeleteSelectedTemplates" disabled="@(!selectedTemplates.Any())">@Loc["DeleteSelected"]</button>
+    <button class="btn btn-danger"
+            @onclick="@(() => TableUtils.DeleteSelected(selectedTemplates, templates, DeleteTemplate, t => t.Id))"
+            disabled="@(!selectedTemplates.Any())">
+        @Loc["DeleteSelected"]
+    </button>
 </div>
-<table class="table table-striped">
-    <thead>
-        <tr>
-            <th><input type="checkbox" checked="@selectAll" @onchange="OnSelectAllChanged" /></th>
-            <th @onclick='() => SortTemplates("Title")' class="sortable-header @(GetSortClass("Title"))">@Loc["Template"]</th>
-            <th @onclick='() => SortTemplates("Author")' class="sortable-header @(GetSortClass("Author"))">@Loc["Author"]</th>
-            <th @onclick='() => SortTemplates("Description")' class="sortable-header @(GetSortClass("Description"))">@Loc["Description"]</th>
-            <th @onclick='() => SortTemplates("CreatedAt")' class="sortable-header @(GetSortClass("CreatedAt"))">@Loc["Date"]</th>
-            <th></th>
-        </tr>
-    </thead>
-    <tbody>
-        @foreach (var template in SortedTemplates)
-        {
-            <tr style="cursor:pointer;" @onclick="(e) => OnRowClickTemplate(e, template.Id)">
-                <td><input type="checkbox" checked="@selectedTemplates.Contains(template.Id)" @onchange="e => OnTemplateSelectionChanged(e, template.Id)" @onclick:stopPropagation /></td>
-                <td>@template.Title</td>
-                <td>@(template.Author?.Email ?? "Неизвестно")</td>
-                <td>@TruncateDescription(template.Description)</td>
-                <td>@template.CreatedAt.ToShortDateString()</td>
-            </tr>
-        }
-    </tbody>
-</table>
+<SortableTable TItem="Template"
+               Items="SortedTemplates"
+               Columns="columns"
+               SortField="sortColumn"
+               SortDirection="@(sortAscending ? "asc" : "desc")"
+               OnSort="OnSort"
+               OnRowClick="OnRowClickTemplate">
+    <RowTemplate Context="template">
+        <td><input type="checkbox" checked="@selectedTemplates.Contains(template.Id)" @onchange="e => TableUtils.UpdateSelection(e, template.Id, selectedTemplates, SortedTemplates.Select(t => t.Id).ToList())" @onclick:stopPropagation /></td>
+        <td>@template.Title</td>
+        <td>@(template.Author?.Email ?? "Неизвестно")</td>
+        <td>@TableUtils.TruncateDescription(template.Description)</td>
+        <td>@template.CreatedAt.ToShortDateString()</td>
+    </RowTemplate>
+</SortableTable>
 
 @code {
     private List<Template> templates = new();
     private List<int> selectedTemplates = new();
-    private bool selectAll = false;
     private string sortColumn = "CreatedAt";
     private bool sortAscending = true;
-    private List<Template> SortedTemplates => GetSorted(templates, sortColumn, sortAscending);
+    private List<SortableTable<Template>.SortableColumn> columns;
+    private Dictionary<string, Func<Template, object?>> sortSelectors;
+    private List<Template> SortedTemplates => TableUtils.GetSorted(templates, sortColumn, sortAscending, sortSelectors, "CreatedAt");
     protected override void OnInitialized()
     {
         templates = TemplateService.GetAllTemplates();
-    }
-    private void SortTemplates(string column)
-    {
-        if (sortColumn == column)
-            sortAscending = !sortAscending;
-        else
+        columns = new()
         {
-            sortColumn = column;
-            sortAscending = true;
-        }
-    }
-    private string GetSortClass(string field)
-    {
-        if (sortColumn == field)
+            new() { Title = "", Field = "Select", Sortable = false },
+            new() { Title = Loc["Template"], Field = "Title", Sortable = true },
+            new() { Title = Loc["Author"], Field = "Author", Sortable = true },
+            new() { Title = Loc["Description"], Field = "Description", Sortable = true },
+            new() { Title = Loc["Date"], Field = "CreatedAt", Sortable = true }
+        };
+        sortSelectors = new()
         {
-            return sortAscending ? "sort-asc" : "sort-desc";
-        }
-        return string.Empty;
+            ["Title"] = t => t.Title ?? string.Empty,
+            ["Author"] = t => t.Author?.Email ?? string.Empty,
+            ["Description"] = t => t.Description ?? string.Empty,
+            ["CreatedAt"] = t => t.CreatedAt
+        };
     }
-    private void OnSelectAllChanged(ChangeEventArgs e)
-    {
-        bool newValue = (bool)e.Value;
-        selectAll = newValue;
-        if (selectAll)
-            selectedTemplates = SortedTemplates.Select(t => t.Id).ToList();
-        else
-            selectedTemplates.Clear();
-    }
-    private void OnTemplateSelectionChanged(ChangeEventArgs e, int templateId)
-    {
-        var isChecked = (bool)e.Value;
-        if (isChecked)
-        {
-            if (!selectedTemplates.Contains(templateId))
-                selectedTemplates.Add(templateId);
-        }
-        else
-        {
-            selectedTemplates.Remove(templateId);
-        }
-        selectAll = selectedTemplates.Count == SortedTemplates.Count && SortedTemplates.Count > 0;
-    }
-    private void DeleteTemplate(int templateId)
-    {
-        TemplateService.DeleteTemplate(templateId);
-        templates.RemoveAll(t => t.Id == templateId);
-    }
-    private void DeleteSelectedTemplates()
-    {
-        foreach (var id in selectedTemplates.ToList())
-        {
-            DeleteTemplate(id);
-        }
-        selectedTemplates.Clear();
-        selectAll = false;
-    }
-    private string TruncateDescription(string description)
-    {
-        if (string.IsNullOrEmpty(description))
-            return string.Empty;
-        if (description.Length <= 100)
-            return description;
-        return description.Substring(0, 100) + "...";
-    }
-    private List<Template> GetSorted(List<Template> templates, string column, bool ascending)
-    {
-        var query = templates.AsQueryable();
-        switch (column)
-        {
-            case "Title":
-                query = ascending ? query.OrderBy(t => t.Title) : query.OrderByDescending(t => t.Title);
-                break;
-            case "Author":
-                query = ascending ? query.OrderBy(t => t.Author.Email) : query.OrderByDescending(t => t.Author.Email);
-                break;
-            case "Description":
-                query = ascending ? query.OrderBy(t => t.Description) : query.OrderByDescending(t => t.Description);
-                break;
-            case "CreatedAt":
-                query = ascending ? query.OrderBy(t => t.CreatedAt) : query.OrderByDescending(t => t.CreatedAt);
-                break;
-            default:
-                query = ascending ? query.OrderBy(t => t.CreatedAt) : query.OrderByDescending(t => t.CreatedAt);
-                break;
-        }
-        return query.ToList();
-    }
-    private void OnRowClickTemplate(MouseEventArgs e, int templateId)
-    {
-        Navigation.NavigateTo($"/template/{templateId}");
-    }
+    private void OnSort(string column) => TableUtils.OnSort(ref sortColumn, ref sortAscending, column);
+    private void DeleteTemplate(int templateId) => TableUtils.DeleteItem(templateId, templates, TemplateService.DeleteTemplate, t => t.Id);
+    private void DeleteSelectedTemplates() => TableUtils.DeleteSelected(selectedTemplates, templates, DeleteTemplate, t => t.Id);
+    private void OnRowClickTemplate(Template template) => Navigation.NavigateTo($"/template/{template.Id}");
 } 

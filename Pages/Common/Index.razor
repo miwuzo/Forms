@@ -35,8 +35,8 @@
                            OnRowClick="@(template => NavigateToTemplate(template.Id))">
                 <RowTemplate Context="template">
                     <td>@template.Title</td>
-                    <td>@TruncateDescription(template.Description)</td>
-                    <td>@GetUserNickname(template.AuthorId)</td>
+                    <td>@TableUtils.TruncateDescription(template.Description)</td>
+                    <td>@getUserNickname(template.AuthorId)</td>
                     <td>@template.Forms.Count</td>
                     <td>@template.CreatedAt.ToShortDateString()</td>
                 </RowTemplate>
@@ -86,8 +86,8 @@
                            OnRowClick="@(template => NavigateToTemplate(template.Id))">
                 <RowTemplate Context="template">
                     <td>@template.Title</td>
-                    <td>@TruncateDescription(template.Description)</td>
-                    <td>@GetUserNickname(template.AuthorId)</td>
+                    <td>@TableUtils.TruncateDescription(template.Description)</td>
+                    <td>@getUserNickname(template.AuthorId)</td>
                     <td>@template.CreatedAt.ToShortDateString()</td>
                 </RowTemplate>
             </SortableTable>
@@ -106,8 +106,8 @@
                            OnRowClick="@(template => NavigateToTemplate(template.Id))">
                 <RowTemplate Context="template">
                     <td>@template.Title</td>
-                    <td>@TruncateDescription(template.Description)</td>
-                    <td>@GetUserNickname(template.AuthorId)</td>
+                    <td>@TableUtils.TruncateDescription(template.Description)</td>
+                    <td>@getUserNickname(template.AuthorId)</td>
                     <td>@template.Forms.Count</td>
                 </RowTemplate>
             </SortableTable>

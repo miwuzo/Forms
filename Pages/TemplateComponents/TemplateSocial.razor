@@ -1,36 +1,34 @@
 @using FormsApp.Data
 @inject LocalizationService Loc
+@inject ICommentService CommentService
+@inject ILikeService LikeService
+@inject IUserService UserService
 
-@if (Template.Id > 0)
+@if (TemplateId > 0)
 {
-    
     <br />
     <div class="likes-section">
-        <span class="likes-count">@Likes</span>
-        <button class="like-btn @(UserLiked ? "liked" : "")" @onclick="OnAddLike">@Loc["Like"]</button>
+        <span class="likes-count">@likes</span>
+        <button class="like-btn @(userLiked ? "liked" : "")" @onclick="AddLike">@Loc["Like"]</button>
     </div>
 
     <div class="comments-section">
-        
         <div class="comments-header">
-            <span class="comments-count">@Loc["Comments"]: @Comments.Count</span>
+            <span class="comments-count">@Loc["Comments"]: @comments.Count</span>
         </div>
-        
         <div class="comment-form">
-            <textarea class="comment-textarea" 
-                      placeholder="@Loc["LeaveComment"]" 
-                      value="@CommentText"
-                      @oninput="OnCommentTextChanged"
+            <textarea class="comment-textarea"
+                      placeholder="@Loc["LeaveComment"]"
+                      @bind="commentText"
                       disabled="@(UserId == null)"></textarea>
-            <button class="comment-submit-btn" 
-                    @onclick="OnAddComment" 
-                    disabled="@(string.IsNullOrWhiteSpace(CommentText) || UserId == null)">
+            <button class="comment-submit-btn"
+                    @onclick="AddComment"
+                    disabled="@(string.IsNullOrWhiteSpace(commentText) || UserId == null)">
                 @Loc["AddComment"]
             </button>
         </div>
-        
         <ul class="comments-list">
-            @foreach (var comment in Comments)
+            @foreach (var comment in comments)
             {
                 <li class="comment-item">
                     <div class="comment-header">
@@ -39,7 +37,7 @@
                             <span class="comment-date">@comment.CreatedAt.ToString("dd.MM.yyyy HH:mm")</span>
                             @if (CanDeleteComment(comment))
                             {
-                                <button class="comment-delete-btn" @onclick="() => OnDeleteComment.InvokeAsync(comment.Id)" title="@Loc["DeleteComment"]">
+                                <button class="comment-delete-btn" @onclick="() => DeleteComment(comment.Id)" title="@Loc["DeleteComment"]">
                                     <i class="oi oi-trash"></i>
                                 </button>
                             }
@@ -52,23 +50,82 @@
     </div>
 }
 
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div class="alert alert-danger">@errorMessage</div>
+}
+
 @code {
-    [Parameter] public Template Template { get; set; } = new();
-    [Parameter] public int Likes { get; set; }
-    [Parameter] public bool UserLiked { get; set; }
-    [Parameter] public List<Comment> Comments { get; set; } = new();
-    [Parameter] public string CommentText { get; set; } = string.Empty;
+    [Parameter] public int TemplateId { get; set; }
     [Parameter] public string? UserId { get; set; }
     [Parameter] public bool CanEdit { get; set; }
-    [Parameter] public EventCallback OnAddLike { get; set; }
-    [Parameter] public EventCallback OnAddComment { get; set; }
-    [Parameter] public EventCallback<int> OnDeleteComment { get; set; }
-    [Parameter] public EventCallback<string> CommentTextChanged { get; set; }
 
-    private async Task OnCommentTextChanged(ChangeEventArgs e)
+    private List<Comment> comments = new();
+    private string commentText = string.Empty;
+    private int likes = 0;
+    private bool userLiked = false;
+    private string? errorMessage;
+
+    protected override void OnParametersSet()
     {
-        var newValue = e.Value?.ToString() ?? string.Empty;
-        await CommentTextChanged.InvokeAsync(newValue);
+        if (TemplateId > 0)
+        {
+            comments = CommentService.GetCommentsByTemplateId(TemplateId);
+            likes = LikeService.GetLikesCount(TemplateId);
+            userLiked = UserId != null && LikeService.UserLiked(TemplateId, UserId);
+        }
+    }
+
+    private void AddLike()
+    {
+        if (string.IsNullOrWhiteSpace(UserId)) return;
+        try
+        {
+            if (userLiked)
+            {
+                LikeService.RemoveLike(TemplateId, UserId);
+                userLiked = false;
+            }
+            else
+            {
+                var user = UserService.GetUserById(UserId);
+                if (user == null)
+                {
+                    errorMessage = "Пользователь не найден. Лайк не может быть поставлен.";
+                    return;
+                }
+                LikeService.AddLike(TemplateId, UserId);
+                userLiked = true;
+            }
+            likes = LikeService.GetLikesCount(TemplateId);
+            errorMessage = null;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = "Ошибка при добавлении лайка: " + ex.Message;
+            Console.WriteLine(errorMessage);
+        }
+    }
+
+    private void AddComment()
+    {
+        if (!string.IsNullOrWhiteSpace(commentText) && UserId != null)
+        {
+            CommentService.AddComment(new Comment {
+                TemplateId = TemplateId,
+                UserId = UserId,
+                Text = commentText,
+                CreatedAt = DateTime.UtcNow
+            });
+            comments = CommentService.GetCommentsByTemplateId(TemplateId);
+            commentText = string.Empty;
+        }
+    }
+
+    private void DeleteComment(int commentId)
+    {
+        CommentService.DeleteComment(commentId);
+        comments = CommentService.GetCommentsByTemplateId(TemplateId);
     }
 
     private bool CanDeleteComment(Comment comment)

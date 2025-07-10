@@ -1,0 +1,56 @@
+.question-card {
+    cursor: move;
+    position: relative;
+}
+
+.question-card:hover {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.question-card.dragging {
+    opacity: 0.5;
+}
+
+.question-type-badge .badge {
+    font-size: 0.8em;
+    padding: 0.4em 0.8em;
+}
+
+.question-actions {
+    opacity: 0.7;
+}
+
+.question-card:hover .question-actions {
+    opacity: 1;
+}
+
+.form-select:focus {
+    border-color: #007bff;
+    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+}
+
+.form-select {
+    color: #007bff;
+}
+
+.selected-type-info {
+    margin-top: 0.25rem;
+    font-size: 0.875em;
+    color: grey;
+}
+
+.table th[style*="cursor: pointer"] {
+    background-color: #f8f9fa;
+    transition: background-color 0.2s ease;
+}
+
+.table th[style*="cursor: pointer"]:hover {
+    background-color: #e9ecef;
+}
+
+.table th[style*="cursor: pointer"]::after {
+    content: "↕";
+    margin-left: 5px;
+    opacity: 0.5;
+    font-size: 0.8em;
+} 

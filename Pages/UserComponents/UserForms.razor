@@ -1,62 +1,80 @@
 @using FormsApp.Data
-@inject LocalizationService Loc
 @using FormsApp.Shared
+@inject LocalizationService Loc
+@inject IFormService FormService
+@inject NavigationManager Navigation
+@inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
+@inject IUserService UserService
 
+<div class="toolbar mb-2">
+    <button class="btn btn-danger"
+            @onclick="@(() => TableUtils.DeleteSelected(selectedForms, forms, DeleteForm, f => f.Id))"
+            disabled="@(!selectedForms.Any())">
+        @Loc["DeleteSelected"]
+    </button>
+</div>
 <SortableTable TItem="Form"
-               Items="FormsSorted"
+               Items="SortedForms"
                Columns="columns"
-               SortField="SortField"
-               SortDirection="@(SortDirection)"
+               SortField="sortColumn"
+               SortDirection="@(sortAscending ? "asc" : "desc")"
                OnSort="OnSort"
-               OnRowClick="HandleNavigateToForm">
+               OnRowClick="OnRowClickForm">
     <RowTemplate Context="form">
-        <td>@form.Template?.Title</td>
-        <td>@(form.Template?.AuthorId != null && UserNames.ContainsKey(form.Template.AuthorId) ? UserNames[form.Template.AuthorId] : form.Template?.AuthorId)</td>
-        <td>@TruncateDescription(form.Template?.Description ?? string.Empty)</td>
+        <td><input type="checkbox" checked="@selectedForms.Contains(form.Id)" @onchange="e => TableUtils.UpdateSelection(e, form.Id, selectedForms, SortedForms.Select(f => f.Id).ToList())" @onclick:stopPropagation /></td>
+        <td>@(form.Template?.Title ?? "Неизвестно")</td>
+        <td>@(form.Template?.AuthorId != null && userNames.ContainsKey(form.Template.AuthorId) ? userNames[form.Template.AuthorId] : form.Template?.AuthorId)</td>
+        <td>@TableUtils.TruncateDescription(form.Template?.Description ?? string.Empty)</td>
         <td>@form.FilledAt.ToShortDateString()</td>
-        <td>
-            <button class="btn btn-danger btn-sm delete-button" @onclick="(e) => HandleDeleteForm(form.Id)" @onclick:stopPropagation>×</button>
-        </td>
     </RowTemplate>
 </SortableTable>
 
 @code {
-    [Parameter] public List<Form> FormsSorted { get; set; } = new();
-    [Parameter] public Dictionary<string, string> UserNames { get; set; } = new();
-    [Parameter] public string SortField { get; set; } = "created";
-    [Parameter] public string SortDirection { get; set; } = "desc";
-    [Parameter] public EventCallback<string> OnSort { get; set; }
-    [Parameter] public EventCallback<int> OnNavigateToForm { get; set; }
-    [Parameter] public EventCallback<int> OnDeleteForm { get; set; }
-
+    private List<Form> forms = new();
+    private List<int> selectedForms = new();
+    private string sortColumn = "FilledAt";
+    private bool sortAscending = true;
     private List<SortableTable<Form>.SortableColumn> columns;
+    private Dictionary<string, Func<Form, object?>> sortSelectors;
+    private List<Form> SortedForms => TableUtils.GetSorted(forms, sortColumn, sortAscending, sortSelectors, "FilledAt");
+    private string? userId;
+    private Dictionary<string, string> userNames = new();
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (userId != null)
+        {
+            forms = FormService.GetUserForms(userId);
+            var allUserIds = forms.Select(f => f.Template?.AuthorId).Where(id => !string.IsNullOrEmpty(id)).Distinct().ToList();
+            var users = UserService.GetAllUsers().Where(u => allUserIds.Contains(u.Id)).ToList();
+            userNames = users.ToDictionary(u => u.Id, u => GetDisplayName(u.UserName));
+        }
         columns = new()
         {
-            new() { Title = Loc["Title"], Field = "title", Sortable = true },
-            new() { Title = Loc["Author"], Field = "author", Sortable = true },
-            new() { Title = Loc["Description"], Field = "description", Sortable = true },
-            new() { Title = Loc["CreatedDate"], Field = "created", Sortable = true },
-            new() { Title = "", Field = "actions", Sortable = false }
+            new() { Title = "", Field = "Select", Sortable = false },
+            new() { Title = Loc["Title"], Field = "Title", Sortable = true },
+            new() { Title = Loc["Author"], Field = "Author", Sortable = true },
+            new() { Title = Loc["Description"], Field = "Description", Sortable = true },
+            new() { Title = Loc["Date"], Field = "FilledAt", Sortable = true }
+        };
+        sortSelectors = new()
+        {
+            ["Title"] = f => f.Template?.Title ?? string.Empty,
+            ["Author"] = f => f.Template?.AuthorId ?? string.Empty,
+            ["Description"] = f => f.Template?.Description ?? string.Empty,
+            ["FilledAt"] = f => f.FilledAt
         };
     }
-
-    private async Task HandleNavigateToForm(Form form)
+    private void OnSort(string column) => TableUtils.OnSort(ref sortColumn, ref sortAscending, column);
+    private void DeleteForm(int formId) => TableUtils.DeleteItem(formId, forms, FormService.DeleteForm, f => f.Id);
+    private void OnRowClickForm(Form form) => Navigation.NavigateTo($"/filled/{form.Id}");
+    private string GetDisplayName(string? userName)
     {
-        await OnNavigateToForm.InvokeAsync(form.Id);
-    }
-    private async Task HandleDeleteForm(int id)
-    {
-        await OnDeleteForm.InvokeAsync(id);
-    }
-    private string TruncateDescription(string description)
-    {
-        if (string.IsNullOrEmpty(description))
+        if (string.IsNullOrEmpty(userName))
             return string.Empty;
-        if (description.Length <= 100)
-            return description;
-        return description.Substring(0, 100) + "...";
+        var atIndex = userName.IndexOf('@');
+        return atIndex > 0 ? userName.Substring(0, atIndex) : userName;
     }
 } 
